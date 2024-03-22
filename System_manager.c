@@ -38,6 +38,7 @@ int file_verification(program_init *programa) {
 
     while (fgets(line, sizeof(line), f)) {
         // Verifica se a linha contém um número
+        line[strcspn(line, "\n")] = '\0';
         if (is_number(line)) {
             temp_val = atoi(line);
             // Verifica se o valor está dentro dos critérios esperados
@@ -79,11 +80,11 @@ int file_verification(program_init *programa) {
 
 
 void monitor_engine(){
-    sleep(10);
+    sleep(2);
 }
 
 void autorization_request_manager(){
-    sleep(10);
+    sleep(2);
 }
 
 int main(int argc, char* argv[]){
