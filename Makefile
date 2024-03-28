@@ -8,14 +8,15 @@ all: ${PROGS}
 clean:
 	rm ${OBJS} ${PROGS} *~
 
-Mobile_user: Mobile_user.o 
-	${CC} ${FLAGS} $^ -o $@
-
 System_manager: System_manager.o 
 	${CC} ${FLAGS} $^ -o $@
+
+Mobile_user: Mobile_user.o System_manager.o 
+	${CC} ${FLAGS} $^ -o $@
     
-Back_office_user: Back_office_user.o 
+Back_office_user: Back_office_user.o System_manager.o 
 	${CC} ${FLAGS} $^ -o $@
 
 %.o: %.c
 	${CC} ${FLAGS} -c $< -o $@
+
