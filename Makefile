@@ -6,7 +6,7 @@ OBJS = System_manager.o Mobile_user.o Back_office_user.o
 all: ${PROGS}
 
 clean:
-	rm -f ${OBJS} ${PROGS} *~
+	rm ${OBJS} ${PROGS} *~
 
 Mobile_user: Mobile_user.o 
 	${CC} ${FLAGS} $^ -o $@
