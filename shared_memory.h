@@ -14,6 +14,8 @@
 #include <ctype.h>
 #include <string.h>
 
+#define LOG_SEM_NAME "log_semaphore"
+
 typedef struct program_init{
     int max_mobile_users;
     int queue_pos;
@@ -23,6 +25,23 @@ typedef struct program_init{
     int max_others_wait; 
 } program_init;
 
+// Initial config variable
 program_init *config;
+
+//Log file management
+FILE *log_file;
+sem_t *log_semaphore;
+
+// Threads names
+pthread_t receiver_thread;
+pthread_t sender_thread;
+
+// Principal process
+pid_t authorization_request_manager_process;
+pid_t monitor_engine_process;
+
+//
+time_t now;
+struct tm *t;
 
 #endif
