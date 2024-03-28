@@ -1,10 +1,4 @@
-#include <pthread.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <unistd.h>
-#include <time.h>
-#include <string.h>
-#include <ctype.h>
+#include "shared_memory.h"
 
 typedef struct user{
     int initial_plafond, max_request, video, music, social, dados_reservar;
@@ -23,6 +17,7 @@ int verify_data(int argc, char **argv) {
 }
 
 int main(int argc, char* argv[]){
+
     user user_data;
 
     if (argc != 7){
@@ -39,5 +34,3 @@ int main(int argc, char* argv[]){
         user_data.dados_reservar = atoi(argv[6]);
     }
 }
-
-

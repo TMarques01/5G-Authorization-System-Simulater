@@ -1,21 +1,6 @@
-#include <stdio.h>
-#include <stdlib.h>
-#include <unistd.h>
-#include <sys/ipc.h>
-#include <sys/shm.h>
-#include <sys/fcntl.h>
-#include <semaphore.h>
-#include <sys/wait.h>
-#include <pthread.h>
-#include <time.h>
-#include <ctype.h>
-#include <string.h>
-
-typedef struct program_init{
-    int MAX_MOBILE_USERS, QUEUE_POS, AUTH_SERVERS, AUTH_PROC_TIME, MAX_VIDEO_WAIT, MAX_OTHERS_WAIT; 
-} program_init;
+#include "shared_memory.h"
  
-
+//Função para verificar se uma string é um número
 int is_number(char* str) {
     for (int i = 0; str[i] != '\0'; i++) {
         if (!isdigit(str[i])) {
@@ -25,20 +10,26 @@ int is_number(char* str) {
     return 1; // É um número
 }
 
-int file_verification(program_init *programa) {
+//Função de verificação do ficheiro
+int file_verification() {
     FILE *f = fopen("config.txt", "r");
+
     if (f == NULL) {
         printf("Erro ao abrir o ficheiro\n");
         return -1;
     }
 
+
     char line[50];
     int count = 0;
     int temp_val;
 
+    config = malloc(sizeof(program_init));
+
     while (fgets(line, sizeof(line), f)) {
-        // Verifica se a linha contém um número
         line[strcspn(line, "\n")] = '\0';
+
+        // Verifica se a linha contém um número
         if (is_number(line)) {
             temp_val = atoi(line);
             // Verifica se o valor está dentro dos critérios esperados
@@ -50,12 +41,12 @@ int file_verification(program_init *programa) {
 
             // Atribui o valor lido à estrutura, baseado no contador
             switch (count) {
-                case 0: programa->MAX_MOBILE_USERS = temp_val; break;
-                case 1: programa->QUEUE_POS = temp_val; break;
-                case 2: programa->AUTH_SERVERS = temp_val; break;
-                case 3: programa->AUTH_PROC_TIME = temp_val; break;
-                case 4: programa->MAX_VIDEO_WAIT = temp_val; break;
-                case 5: programa->MAX_OTHERS_WAIT = temp_val; break;
+                case 0: config->max_mobile_users = temp_val; break;
+                case 1: config->queue_pos = temp_val; break;
+                case 2: config->auth_servers = temp_val; break;
+                case 3: config->auth_proc_time = temp_val; break;
+                case 4: config->max_video_wait = temp_val; break;
+                case 5: config->max_others_wait = temp_val; break;
                 default:
                     fclose(f);
                     return -3; // Número inesperado de linhas
@@ -78,23 +69,33 @@ int file_verification(program_init *programa) {
     return 0; // Sucesso
 }
 
-
 void monitor_engine(){
-    sleep(2);
+    sleep(1);
 }
 
 void autorization_request_manager(){
-    sleep(2);
+    sleep(1);
+}
+
+// Fechar tudo que há para fechar
+void cleanup(){
+
+    //Free config malloc
+    free(config);
+
+
+    // Wait for 2 process
+    for(int i=0;i<2;i++){
+		wait(NULL);
+	}
 }
 
 int main(int argc, char* argv[]){
 
-    program_init program;
-
-    if (file_verification(&program) != 0){
+    // Verifiar ficheiro config (valores guardados variavel "config")
+    if (file_verification() != 0){
         return 0;
     }
-
 
     // Criação do processo Monitor engine
     int monitor_engine_process = fork();
@@ -116,11 +117,8 @@ int main(int argc, char* argv[]){
         exit(0);
     }
 
-    // Funeral dos processos
-    for(int i=0;i<2;i++){
-		wait(NULL);
-	}
+    //Cleaning...
+    cleanup();
 
-
-
+    return 0;
 }
