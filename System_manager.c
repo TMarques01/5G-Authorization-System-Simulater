@@ -2,7 +2,7 @@
 
 // Function to write in log file
 void write_log(char *writing){
-    
+
     // Sempahore for writing in the file
     sem_wait(log_semaphore);
 
@@ -10,9 +10,10 @@ void write_log(char *writing){
     now = time(NULL);
     t = localtime(&now);
 
-    fprintf(log_file, "%d-%02d-%02d %02d:%02d:%02d  %s\n",
-        t->tm_year + 1900, t->tm_mon + 1, t->tm_mday,
-        t->tm_hour, t->tm_min, t->tm_sec, writing);
+    fprintf(log_file, "%02d:%02d:%02d  %s\n",t->tm_hour, t->tm_min, t->tm_sec, writing);
+
+    // Clean buffer
+    fflush(log_file);
 
     sem_post(log_semaphore);
 }
@@ -88,22 +89,19 @@ int file_verification() {
 
 // Monitor engine process function
 void monitor_engine(){
-    sleep(1);
 }
 
 // Receiver funcion
 void *receiver(void *arg){
     write_log("THREAD RECEIVER CREATED");
-    sleep(1);
     pthread_exit(NULL);
 }
 
 // Sender function
 void *sender(void *arg){
     write_log("THREAD SENDER CREATED");
-    sleep(1);
     pthread_exit(NULL);
-}
+} 
 
 // Authorization request manager function
 void authorization_request_manager(){
@@ -128,11 +126,18 @@ void authorization_request_manager(){
 // Closing function
 void cleanup(){
 
+    // Teoricamente esta função apenas será chamada quando um sinal for acionado
+    // Neste caso como nenhum sinal é adicionado ele isto e fica à espera que os
+    // outros processos acabem, aparecendo primeiro no log file
+    // meti este sleep só para evitar isso
+    sleep(1);
+
+    int status, status1;
+
     write_log("5G_AUTH_PLATFORM SIMULATOR WAITING FOR LAST TASKS TO FINISH");
     // Wait for Authorization and Monitor engine
-    for(int i=0;i<2;i++){
-		wait(NULL);
-	}
+	if (waitpid(authorization_request_manager_process, &status, 0) == -1 ) perror("waitpid\n");
+    if (waitpid(monitor_engine_process, &status1, 0) == -1) perror("waitpid\n");
 
     write_log("5G_AUTH_PLATFORM SIMULATOR CLOSING");
 
@@ -143,8 +148,6 @@ void cleanup(){
 
     //Free config malloc
     free(config);
-
-    
 }
 
 // Function to initialize log file and log semaphore
@@ -158,21 +161,11 @@ void init_log(){
         perror("sem_open");
         exit(1);
     } 
-
-
 }
 
-int main(int argc, char* argv[]){
+// Function to initilize everything (process, semaphore, pipes...)
+void init_program(){
 
-    // Verify "config" file
-    if (file_verification() != 0){
-        return 0;
-    }
-
-    // Inicialize log file and log sempahore
-    init_log();
-
-    // Isto está a escrever bué vezes no ficheiro não sei porquê
     write_log("5G_AUTH_PLATFORM SIMULATOR STARTING");
 
     // Create monitor_engine_process
@@ -200,6 +193,20 @@ int main(int argc, char* argv[]){
         perror("CANNOT CREAT AUTHORIZATION REQUESTE MANAGER PROCESS\n");
         exit(1);
     }
+}
+
+int main(int argc, char* argv[]){
+
+    // Verify "config" file
+    if (file_verification() != 0){
+        return 0;
+    }
+
+    // Initialize log file and log sempahore
+    init_log();
+
+    // Initialize program
+    init_program();
 
     //Cleaning...
     cleanup();
