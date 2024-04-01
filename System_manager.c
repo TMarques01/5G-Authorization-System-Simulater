@@ -1,3 +1,6 @@
+//Mariana Sousa 2022215999
+//Tiago Marques 2022210638
+
 #include "shared_memory.h"
 
 // Function to write in log file
@@ -11,6 +14,7 @@ void write_log(char *writing){
     t = localtime(&now);
 
     fprintf(log_file, "%02d:%02d:%02d  %s\n",t->tm_hour, t->tm_min, t->tm_sec, writing);
+	printf("%02d:%02d:%02d  %s\n",t->tm_hour, t->tm_min, t->tm_sec, writing);
 
     // Clean buffer
     fflush(log_file);
@@ -29,14 +33,13 @@ int is_number(char* str) {
 }
 
 //Função de verificação do ficheiro
-int file_verification() {
-    FILE *f = fopen("config.txt", "r");
+int file_verification(const char* filename) {
+    FILE *f = fopen(filename, "r");
 
     if (f == NULL) {
         printf("Erro ao abrir o ficheiro\n");
         return -1;
     }
-
 
     char line[50];
     int count = 0;
@@ -146,6 +149,15 @@ void cleanup(){
     if (sem_unlink(LOG_SEM_NAME) == -1 ) printf ("ERROR UNLINKING LOG SEMAPHORE\n");
     if (fclose(log_file) == EOF) printf("ERROR CLOSIGN LOG FILE\n");
 
+
+	//Delete shared memory
+	if(shmdt(mem)==-1){
+		printf("Erro no shmdt");
+	}
+	if(shmctl(shmid,IPC_RMID, NULL) == -1){
+		printf("Erro no shmctl");
+	}
+
     //Free config malloc
     free(config);
 }
@@ -163,10 +175,24 @@ void init_log(){
     } 
 }
 
+
 // Function to initilize everything (process, semaphore, pipes...)
 void init_program(){
 
     write_log("5G_AUTH_PLATFORM SIMULATOR STARTING");
+
+    //Create de shared memory
+	int shsize= (sizeof(user)*config->max_mobile_users);
+	int shmid= shmget(IPC_PRIVATE, shsize, IPC_CREAT | IPC_EXCL | 0777);
+	if(shmid==-1){
+		printf("Erro no shmget\n");
+		exit(1);
+	}
+
+	if((mem = (users_list *) shmat(shmid, NULL,0)) == (users_list *)-1){
+		printf("Erro shmat\n");
+		exit(0);
+	}
 
     // Create monitor_engine_process
     monitor_engine_process = fork();
@@ -189,16 +215,26 @@ void init_program(){
         write_log("PROCESS AUTHORIZATION REQUEST MANAGER CREATED");
         authorization_request_manager();
         exit(0);
+
     } else if (authorization_request_manager_process == -1){
         perror("CANNOT CREAT AUTHORIZATION REQUESTE MANAGER PROCESS\n");
         exit(1);
     }
+	
 }
 
 int main(int argc, char* argv[]){
 
+
+    if (argc != 2) {
+        printf("5g_auth_platform {config-file}\n");
+    }
+
+	char filename[100];
+    strcpy(filename,argv[1]);
+
     // Verify "config" file
-    if (file_verification() != 0){
+    if (file_verification(filename) != 0){
         return 0;
     }
 
