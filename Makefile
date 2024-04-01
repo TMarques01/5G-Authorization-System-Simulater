@@ -1,6 +1,6 @@
 CC = gcc
 FLAGS = -Wall -pthread -g
-PROGS = System_manager Mobile_user Back_office_user 
+PROGS = 5g_auth_platform Mobile_user Back_office_user 
 OBJS = System_manager.o Mobile_user.o Back_office_user.o 
 
 all: ${PROGS}
@@ -8,7 +8,7 @@ all: ${PROGS}
 clean:
 	rm ${OBJS} *~ ${PROGS} 
 
-System_manager: System_manager.o 
+5g_auth_platform: System_manager.o 
 	${CC} ${FLAGS} $^ -o $@
 
 Mobile_user: Mobile_user.o  
