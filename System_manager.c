@@ -110,20 +110,20 @@ void *sender(void *arg){
 void authorization_request_manager(){
 
     // Argumento para já será 0
-    if (pthread_create(&receiver_thread, NULL,receiver, 0) != 0) {
+    if (pthread_create(&receiver_thread, NULL, receiver, 0) != 0) {
         printf("CANNOT CREATE RECEIVER_THREAD\n");
         exit(1);
     }
 
     // Argumento para já será 1
-    if (pthread_create(&sender_thread, NULL,sender,(void*) 1) != 0) {
+    if (pthread_create(&sender_thread, NULL, sender,(void*)1) != 0) {
         printf("CANNOT CREATE SENDER_THREAD\n");
         exit(1);
     }
 
     // Closing threads
-    pthread_cancel(receiver_thread);
-    pthread_cancel(sender_thread);
+    pthread_join(receiver_thread, NULL);
+    pthread_join(sender_thread, NULL);
 }
 
 // Closing function
@@ -141,8 +141,6 @@ void cleanup(){
     // Wait for Authorization and Monitor engine
 	if (waitpid(authorization_request_manager_process, &status, 0) == -1 ) perror("waitpid\n");
     if (waitpid(monitor_engine_process, &status1, 0) == -1) perror("waitpid\n");
-
-
 
     write_log("5G_AUTH_PLATFORM SIMULATOR CLOSING");
 
