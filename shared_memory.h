@@ -31,6 +31,7 @@ typedef struct user{
 
 typedef struct users_list{
 	struct user user;
+	struct users_list * next;
 }users_list;
 
 users_list *mem;
