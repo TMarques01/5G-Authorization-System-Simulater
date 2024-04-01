@@ -136,10 +136,6 @@ void authorization_request_manager(){
 // Closing function
 void cleanup(){
 
-    // Teoricamente esta função apenas será chamada quando um sinal for acionado
-    // Neste caso como nenhum sinal é adicionado ele isto e fica à espera que os
-    // outros processos acabem, aparecendo primeiro no log file
-    // meti este sleep só para evitar isso
     sleep(1);
 
     int status, status1;
