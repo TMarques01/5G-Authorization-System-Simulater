@@ -122,8 +122,15 @@ void authorization_request_manager(){
     }
 
     // Closing threads
-    pthread_join(receiver_thread, NULL);
-    pthread_join(sender_thread, NULL);
+    if (pthread_join(receiver_thread, NULL) != 0){
+        printf("CANNOT JOIN RECEIVER THREAD");
+        exit(1);
+    }
+
+    if (pthread_join(sender_thread, NULL) != 0){
+        printf("CANNOT JOIN SENDER THREAD");
+        exit(1);
+    }
 }
 
 // Closing function
