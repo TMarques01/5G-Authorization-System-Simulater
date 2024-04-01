@@ -25,6 +25,17 @@ typedef struct program_init{
     int max_others_wait; 
 } program_init;
 
+typedef struct user{
+    int initial_plafond, max_request, video, music, social, dados_reservar;
+}user;
+
+typedef struct users_list{
+	struct user user;
+}users_list;
+
+users_list *mem;
+int shmid;
+
 // Initial config variable
 program_init *config;
 
