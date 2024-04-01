@@ -1,8 +1,8 @@
+//Mariana Sousa 2022215999
+//Tiago Marques 2022210638
+
 #include "shared_memory.h"
 
-typedef struct user{
-    int initial_plafond, max_request, video, music, social, dados_reservar;
-}user;
 
 int verify_data(int argc, char **argv) {
     for (int i = 1; i < argc; i++){ // Começa em 1 para ignorar o nome do programa
