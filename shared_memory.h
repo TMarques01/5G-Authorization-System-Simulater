@@ -25,17 +25,25 @@ typedef struct program_init{
     int max_others_wait; 
 } program_init;
 
+// Struct dos users
 typedef struct user{
-    int initial_plafond, max_request, video, music, social, dados_reservar;
+    int initial_plafond; 
+    int max_request;
+    int video;
+    int music;
+    int social;
+    int dados_reservar;
 }user;
 
+// Lista ligada dos users
 typedef struct users_list{
 	struct user user;
 	struct users_list * next;
 }users_list;
 
+// Shared memory variable
 users_list *mem;
-int shmid;
+int shm_id;
 
 // Initial config variable
 program_init *config;
@@ -52,7 +60,7 @@ pthread_t sender_thread;
 pid_t authorization_request_manager_process;
 pid_t monitor_engine_process;
 
-//
+// Time Variables
 time_t now;
 struct tm *t;
 

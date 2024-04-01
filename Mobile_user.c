@@ -18,13 +18,13 @@ int verify_data(int argc, char **argv) {
 
 int main(int argc, char* argv[]){
 
-    user user_data;
+    //user user_data;
 
     if (argc != 7){
         printf("Número incorreto de argumentos\n");
         exit(0);
     }
-
+    /*
     if (verify_data(argc, argv) != 0){
         user_data.initial_plafond = atoi(argv[1]);
         user_data.max_request = atoi(argv[2]);
@@ -33,4 +33,5 @@ int main(int argc, char* argv[]){
         user_data.social = atoi(argv[5]);
         user_data.dados_reservar = atoi(argv[6]);
     }
+    */
 }

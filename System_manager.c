@@ -110,13 +110,13 @@ void *sender(void *arg){
 void authorization_request_manager(){
 
     // Argumento para já será 0
-    if (pthread_create(&receiver_thread, NULL,sender, 0) != 0) {
+    if (pthread_create(&receiver_thread, NULL,receiver, 0) != 0) {
         printf("CANNOT CREATE RECEIVER_THREAD\n");
         exit(1);
     }
 
     // Argumento para já será 1
-    if (pthread_create(&sender_thread, NULL,receiver,(void*) 1) != 0) {
+    if (pthread_create(&sender_thread, NULL,sender,(void*) 1) != 0) {
         printf("CANNOT CREATE SENDER_THREAD\n");
         exit(1);
     }
@@ -142,6 +142,8 @@ void cleanup(){
 	if (waitpid(authorization_request_manager_process, &status, 0) == -1 ) perror("waitpid\n");
     if (waitpid(monitor_engine_process, &status1, 0) == -1) perror("waitpid\n");
 
+
+
     write_log("5G_AUTH_PLATFORM SIMULATOR CLOSING");
 
     // Close log file and destroy semaphores
@@ -149,12 +151,11 @@ void cleanup(){
     if (sem_unlink(LOG_SEM_NAME) == -1 ) printf ("ERROR UNLINKING LOG SEMAPHORE\n");
     if (fclose(log_file) == EOF) printf("ERROR CLOSIGN LOG FILE\n");
 
-
-	//Delete shared memory
-	if(shmdt(mem)==-1){
+    //Delete shared memory
+	if(shmdt(mem)== -1){
 		printf("Erro no shmdt");
 	}
-	if(shmctl(shmid,IPC_RMID, NULL) == -1){
+	if(shmctl(shm_id,IPC_RMID, NULL) == -1){
 		printf("Erro no shmctl");
 	}
 
@@ -175,21 +176,20 @@ void init_log(){
     } 
 }
 
-
 // Function to initilize everything (process, semaphore, pipes...)
 void init_program(){
 
     write_log("5G_AUTH_PLATFORM SIMULATOR STARTING");
 
     //Create de shared memory
-	int shsize= (sizeof(user)*config->max_mobile_users);
-	int shmid= shmget(IPC_PRIVATE, shsize, IPC_CREAT | IPC_EXCL | 0777);
-	if(shmid==-1){
+	int shsize= (sizeof(user)*config->max_mobile_users); // SM size
+	shm_id = shmget(IPC_PRIVATE, shsize, IPC_CREAT | IPC_EXCL | 0777);
+	if(shm_id==-1){
 		printf("Erro no shmget\n");
 		exit(1);
 	}
 
-	if((mem = (users_list *) shmat(shmid, NULL,0)) == (users_list *)-1){
+	if((mem = (users_list *) shmat(shm_id, NULL,0)) == (users_list *)-1){
 		printf("Erro shmat\n");
 		exit(0);
 	}
@@ -228,13 +228,11 @@ int main(int argc, char* argv[]){
 
     if (argc != 2) {
         printf("5g_auth_platform {config-file}\n");
+        return 0;
     }
 
-	char filename[100];
-    strcpy(filename,argv[1]);
-
     // Verify "config" file
-    if (file_verification(filename) != 0){
+    if (file_verification(argv[1]) != 0){
         return 0;
     }
 
