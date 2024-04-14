@@ -13,6 +13,10 @@
 #include <time.h>
 #include <ctype.h>
 #include <string.h>
+#include <signal.h>
+#include <errno.h>
+#include <sys/types.h>
+#include <sys/stat.h>
 
 #define LOG_SEM_NAME "log_semaphore"
 
@@ -47,10 +51,6 @@ int shm_id;
 
 // Initial config variable
 program_init *config;
-
-//Log file management
-FILE *log_file;
-sem_t *log_semaphore;
 
 // Threads names
 pthread_t receiver_thread;

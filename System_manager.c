@@ -1,7 +1,7 @@
 //Mariana Sousa 2022215999
 //Tiago Marques 2022210638
 
-#include "shared_memory.h"
+#include "System_manager.h"
 
 // Function to write in log file
 void write_log(char *writing){
@@ -106,8 +106,20 @@ void *sender(void *arg){
     pthread_exit(NULL);
 } 
 
+// Creat Named pipes
+void create_named_pipe(char *name){ 
+  unlink(name);
+  if ((mkfifo(name, O_CREAT|O_EXCL|0600)<0) && (errno != EEXIST)){
+    printf("CANNOT CREATE NAMED PIPE -> EXITING\n");
+    exit(1);
+  }
+}
+
 // Authorization request manager function
 void authorization_request_manager(){
+
+    create_named_pipe(USER_PIPE);
+    create_named_pipe(BACK_PIPE);
 
     // Argumento para já será 0
     if (pthread_create(&receiver_thread, NULL, receiver, 0) != 0) {
@@ -136,8 +148,6 @@ void authorization_request_manager(){
 // Closing function
 void cleanup(){
 
-    sleep(1);
-
     int status, status1;
 
     write_log("5G_AUTH_PLATFORM SIMULATOR WAITING FOR LAST TASKS TO FINISH");
@@ -151,6 +161,8 @@ void cleanup(){
     if (sem_close(log_semaphore) == -1) printf("ERROR CLOSING LOG SEMAPHORE\n");
     if (sem_unlink(LOG_SEM_NAME) == -1 ) printf ("ERROR UNLINKING LOG SEMAPHORE\n");
     if (fclose(log_file) == EOF) printf("ERROR CLOSIGN LOG FILE\n");
+    if (unlink(USER_PIPE) == -1)printf("ERROR UNLINKING PIPE USER_PIPE\n");
+    if (unlink(BACK_PIPE) == -1)printf("ERROR UNLINKING PIPE BACK_PIPE\n");
 
     //Delete shared memory
 	if(shmdt(mem)== -1){
@@ -162,6 +174,8 @@ void cleanup(){
 
     //Free config malloc
     free(config);
+
+    exit(0);
 }
 
 // Function to initialize log file and log semaphore
@@ -177,20 +191,20 @@ void init_log(){
     } 
 }
 
-// Function to initilize everything (process, semaphore, pipes...)
+// Function to initilize everything (process, semaphore...)
 void init_program(){
 
     write_log("5G_AUTH_PLATFORM SIMULATOR STARTING");
 
     //Create de shared memory
-	int shsize= (sizeof(user)*config->max_mobile_users); // SM size
+	int shsize= (sizeof(users_list)*config->max_mobile_users); // SM size
 	shm_id = shmget(IPC_PRIVATE, shsize, IPC_CREAT | IPC_EXCL | 0777);
 	if(shm_id==-1){
 		printf("Erro no shmget\n");
 		exit(1);
 	}
 
-	if((mem = (users_list *) shmat(shm_id, NULL,0)) == (users_list *)-1){
+	if((mem = (users_list *) shmat(shm_id, NULL,0)) == (users_list *) - 1){
 		printf("Erro shmat\n");
 		exit(0);
 	}
@@ -226,7 +240,6 @@ void init_program(){
 
 int main(int argc, char* argv[]){
 
-
     if (argc != 2) {
         printf("5g_auth_platform {config-file}\n");
         return 0;
@@ -243,8 +256,9 @@ int main(int argc, char* argv[]){
     // Initialize program
     init_program();
 
-    //Cleaning...
-    cleanup();
+    signal(SIGINT, cleanup);
 
-    return 0;
+    while(1){
+        
+    }
 }

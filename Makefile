@@ -21,7 +21,6 @@ Back_office_user: Back_office_user.o
 	${CC} ${FLAGS} -c $< -o $@
 
 ##########################
-System_manager.o: System_manager.c shared_memory.h
+System_manager.o: System_manager.c System_manager.h shared_memory.h
 Mobile_user.o: Mobile_user.c shared_memory.h
 Back_office_user.o: Back_office_user.c shared_memory.h
-
