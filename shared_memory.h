@@ -1,14 +1,10 @@
-#ifndef shared_mem 
-#define shared_mem
+#ifndef SHARED_MEM_H 
+#define SHARED_MEM_H
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
-#include <sys/ipc.h>
-#include <sys/shm.h>
-#include <sys/fcntl.h>
 #include <semaphore.h>
-#include <sys/wait.h>
 #include <pthread.h>
 #include <time.h>
 #include <ctype.h>
@@ -17,8 +13,17 @@
 #include <errno.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <sys/msg.h>
+#include <sys/ipc.h>
+#include <sys/shm.h>
+#include <sys/fcntl.h>
+#include <sys/wait.h>
 
 #define LOG_SEM_NAME "log_semaphore"
+
+// Pipe Names
+#define USER_PIPE "user_pipe"
+#define BACK_PIPE "back_pipe"
 
 typedef struct program_init{
     int max_mobile_users;
@@ -37,6 +42,7 @@ typedef struct user{
     int music;
     int social;
     int dados_reservar;
+    int id;
 }user;
 
 // Lista ligada dos users
@@ -63,5 +69,10 @@ pid_t monitor_engine_process;
 // Time Variables
 time_t now;
 struct tm *t;
+
+//Message Queue
+int mq_v_id;
+int mq_o_id;
+int mq_id;
 
 #endif

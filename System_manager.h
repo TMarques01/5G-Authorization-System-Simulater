@@ -1,26 +1,31 @@
-#ifndef System_manager
-#define System_manager
+#ifndef SYSTEM_MAN_H
+#define SYSTEM_MAN_H
 
 #include "shared_memory.h"
 
-// Pipe Names
-#define USER_PIPE "user_pipe"
-#define BACK_PIPE "back_pipe"
+// Linked List Functions
+users_list* create_user_node(user userdata); 
+int is_list_empty(users_list* head);
+void add_list_user(users_list** head, user userdata);
+void print_user_list();
+void destroy_user_list();
 
-//Log file management
-FILE *log_file;
-sem_t *log_semaphore;
-
-void write_log(char *writing);
-int is_number(char* str);
-int file_verification(const char* filename);
+// Process and Threads
 void monitor_engine();
 void *receiver(void *arg);
 void *sender(void *arg);
-void create_named_pipe(char *name);
 void authorization_request_manager();
+
+// Main program funcions
 void cleanup();
 void init_log();
 void init_program();
+
+// Auxiliar Functions
+void create_named_pipe(char *name);
+int file_verification(const char* filename);
+int is_number(char* str);
+void write_log(char *writing);
+char *read_from_pipe(int pipe_fd);
 
 #endif

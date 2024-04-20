@@ -3,6 +3,89 @@
 
 #include "System_manager.h"
 
+//Log file management
+FILE *log_file;
+sem_t *log_semaphore;
+
+// ============= USERS LIST FUNCTIONS =============
+ 
+// Function to create a new user node
+users_list* create_user_node(user userdata) {
+    users_list* newNode = (users_list*) malloc(sizeof(users_list));
+    if (newNode == NULL) {
+        fprintf(stderr, "Failed to allocate memory for new user node.\n");
+        exit(EXIT_FAILURE);
+    }
+    newNode->user = userdata; // Copia os dados do usuário
+    newNode->next = NULL;
+    return newNode;
+}
+
+// Function to check if the list is empty
+int is_list_empty(users_list* head) {
+    return (head == NULL);
+}
+
+// Function to add a user to the end of the list
+void add_list_user(users_list** head, user userdata) {
+    users_list* newNode = create_user_node(userdata);
+    if (is_list_empty(*head)) {
+        *head = newNode;
+        return;
+    }
+    users_list* current = *head;
+    while (current->next != NULL) {
+        current = current->next;
+    }
+    current->next = newNode;
+}
+
+// Functions to print users list
+void print_user_list() {
+    if (mem == NULL) {
+        printf("The user list is empty.\n");
+        return;
+    }
+
+    users_list *current = mem;
+    printf("User List:\n");
+    while (current != NULL) {
+        printf("ID: %d, Plafond: %d, Max Requests: %d, Video: %d, Music: %d, Social: %d, Reserved Data: %d\n",
+            current->user.id, current->user.initial_plafond, current->user.max_request, current->user.video,
+            current->user.music, current->user.social, current->user.dados_reservar);
+        current = current->next;
+    }
+}
+
+// Function to destroy user list
+void destroy_user_list() {
+    users_list *current = mem;
+    while (current != NULL) {
+        users_list *next = current->next; // Guarda o próximo nó
+        free(current); // Libera a memória do nó atual
+        current = next; // Move para o próximo nó
+    }
+    mem = NULL; // Garante que a memória compartilhada não aponte para um local inválido
+}
+
+// ============= AUX FUNCTIONS =============
+
+// Function to read from the pipe
+char *read_from_pipe(int pipe_fd){
+
+    char buffer[1024];
+    ssize_t bytes_read = read(pipe_fd, buffer, sizeof(buffer));
+
+    if (bytes_read == -1) {
+        return NULL;
+    } else {
+        char* data = malloc(bytes_read + 1);
+        memcpy(data, buffer, bytes_read);
+        data[bytes_read] = '\0';
+        return data;
+    }
+}
+
 // Function to write in log file
 void write_log(char *writing){
 
@@ -90,22 +173,6 @@ int file_verification(const char* filename) {
     return 0; // Sucesso
 }
 
-// Monitor engine process function
-void monitor_engine(){
-}
-
-// Receiver funcion
-void *receiver(void *arg){
-    write_log("THREAD RECEIVER CREATED");
-    pthread_exit(NULL);
-}
-
-// Sender function
-void *sender(void *arg){
-    write_log("THREAD SENDER CREATED");
-    pthread_exit(NULL);
-} 
-
 // Creat Named pipes
 void create_named_pipe(char *name){ 
   unlink(name);
@@ -115,9 +182,43 @@ void create_named_pipe(char *name){
   }
 }
 
+// ============= PROCESSES AND THREADS =============
+
+// Monitor engine process function
+void monitor_engine(){
+}
+
+// Receiver funcion
+void *receiver(void *arg){
+    write_log("THREAD RECEIVER CREATED");
+
+    int fd_user_pipe;
+    char *buffer;
+
+    if ((fd_user_pipe = open(USER_PIPE, O_RDONLY )) < 0) {
+        perror("CANNOT OPEN USER_PIPE FOR READING\nS");
+        exit(1);
+    }
+
+    while (1){
+        buffer = read_from_pipe(fd_user_pipe);
+        printf("%s\n", buffer);
+    }
+
+
+    pthread_exit(NULL);
+}
+
+// Sender function
+void *sender(void *arg){
+    write_log("THREAD SENDER CREATED");
+    pthread_exit(NULL);
+} 
+
 // Authorization request manager function
 void authorization_request_manager(){
 
+    // Create named pipes
     create_named_pipe(USER_PIPE);
     create_named_pipe(BACK_PIPE);
 
@@ -143,7 +244,10 @@ void authorization_request_manager(){
         printf("CANNOT JOIN SENDER THREAD");
         exit(1);
     }
+
 }
+
+// ============= MAIN PROGRAM =============
 
 // Closing function
 void cleanup(){
@@ -151,26 +255,27 @@ void cleanup(){
     int status, status1;
 
     write_log("5G_AUTH_PLATFORM SIMULATOR WAITING FOR LAST TASKS TO FINISH");
+
     // Wait for Authorization and Monitor engine
-	if (waitpid(authorization_request_manager_process, &status, 0) == -1 ) perror("waitpid\n");
-    if (waitpid(monitor_engine_process, &status1, 0) == -1) perror("waitpid\n");
+	if (waitpid(authorization_request_manager_process, &status, 0) == -1 ) write_log("waitpid\n");
+    if (waitpid(monitor_engine_process, &status1, 0) == -1) write_log("waitpid\n");
 
     write_log("5G_AUTH_PLATFORM SIMULATOR CLOSING");
 
-    // Close log file and destroy semaphores
-    if (sem_close(log_semaphore) == -1) printf("ERROR CLOSING LOG SEMAPHORE\n");
-    if (sem_unlink(LOG_SEM_NAME) == -1 ) printf ("ERROR UNLINKING LOG SEMAPHORE\n");
-    if (fclose(log_file) == EOF) printf("ERROR CLOSIGN LOG FILE\n");
-    if (unlink(USER_PIPE) == -1)printf("ERROR UNLINKING PIPE USER_PIPE\n");
-    if (unlink(BACK_PIPE) == -1)printf("ERROR UNLINKING PIPE BACK_PIPE\n");
+    // Close Message Queue
+    if (msgctl(mq_id, IPC_RMID, NULL) == -1) write_log("ERROR CLOSING P MESSAGE QUEUE\n");
+    if (msgctl(mq_o_id, IPC_RMID, NULL) == -1) write_log("ERROR CLOSING OTHER MESSAGE QUEUE\n");
+    if (msgctl(mq_v_id, IPC_RMID, NULL) == -1) write_log("ERROR CLOSING VIDEO MESSAGE QUEUE\n");
 
+    // Close log file, destroy semaphoro and pipes
+    if (sem_close(log_semaphore) == -1) write_log("ERROR CLOSING LOG SEMAPHORE\n");
+    if (sem_unlink(LOG_SEM_NAME) == -1 ) write_log ("ERROR UNLINKING LOG SEMAPHORE\n");
+    if (fclose(log_file) == EOF) write_log("ERROR CLOSIGN LOG FILE\n");
+    if (unlink(USER_PIPE) == -1)write_log("ERROR UNLINKING PIPE USER_PIPE\n");
+    if (unlink(BACK_PIPE) == -1)write_log("ERROR UNLINKING PIPE BACK_PIPE\n");
     //Delete shared memory
-	if(shmdt(mem)== -1){
-		printf("Erro no shmdt");
-	}
-	if(shmctl(shm_id,IPC_RMID, NULL) == -1){
-		printf("Erro no shmctl");
-	}
+	if(shmdt(mem)== -1) write_log("ERROR IN shmdt");
+	if(shmctl(shm_id,IPC_RMID, NULL) == -1) write_log("ERROR IN shmctl");
 
     //Free config malloc
     free(config);
@@ -195,6 +300,22 @@ void init_log(){
 void init_program(){
 
     write_log("5G_AUTH_PLATFORM SIMULATOR STARTING");
+
+    // Creating Message Queue
+    if ((mq_id = msgget(IPC_PRIVATE, 0777|IPC_CREAT)) == -1){
+        printf("ERRO CREATING MESSAGE QUEUE\n");
+        exit(1);
+    } 
+
+    if ((mq_v_id = msgget(IPC_PRIVATE, 0777|IPC_CREAT)) == -1){
+        printf("CANNOT CREAT VIDEO MESSAGE QUEUE\n");
+        exit(1);
+    } 
+
+    if ((mq_o_id = msgget(IPC_PRIVATE, 0777|IPC_CREAT)) == -1){
+        printf("CANNOT CREAT OTHER MESSAGE QUEUE\n");
+        exit(1);
+    } 
 
     //Create de shared memory
 	int shsize= (sizeof(users_list)*config->max_mobile_users); // SM size
@@ -235,7 +356,6 @@ void init_program(){
         perror("CANNOT CREAT AUTHORIZATION REQUESTE MANAGER PROCESS\n");
         exit(1);
     }
-	
 }
 
 int main(int argc, char* argv[]){
@@ -256,6 +376,7 @@ int main(int argc, char* argv[]){
     // Initialize program
     init_program();
 
+    // Signal to end program
     signal(SIGINT, cleanup);
 
     while(1){
