@@ -3,28 +3,18 @@
 
 #include "shared_memory.h"
 #include "System_manager.h"
+#include "funcoes.h"
 
 int fd_named_pipe, login = 0;;
 char buffer[256];
 user user_data;
 
-int is_number(char* str);
 
 void handle_signal(int sigint){
     exit(0);
 }
 
 // ============= DATA VERIFICATION FUNCTIONS =============
-
-//Função para verificar se uma string é um número
-int is_number(char* str) {
-    for (int i = 0; str[i] != '\0'; i++) {
-        if (!isdigit(str[i])) {
-            return 0; // Não é um número
-        }
-    }
-    return 1; // É um número
-}
 
 int verify_data(int argc, char **argv) {
     for (int i = 1; i < argc; i++){ // Começa em 1 para ignorar o nome do programa
