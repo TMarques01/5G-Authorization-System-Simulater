@@ -21,6 +21,7 @@
 
 #define LOG_SEM_NAME "log_semaphore"
 
+
 // Pipe Names
 #define USER_PIPE "user_pipe"
 #define BACK_PIPE "back_pipe"
@@ -51,6 +52,18 @@ typedef struct users_list{
 	struct users_list * next;
 }users_list;
 
+// Message queue struct
+typedef struct {
+   long priority;
+   user current_user;
+}video_queue;
+
+typedef struct {
+   long priority;
+   user current_user;
+}other_queue;
+
+
 // Shared memory variable
 users_list *mem;
 int shm_id;
@@ -74,5 +87,8 @@ struct tm *t;
 int mq_v_id;
 int mq_o_id;
 int mq_id;
+
+//Sem
+sem_t *user_list;
 
 #endif

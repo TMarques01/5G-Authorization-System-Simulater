@@ -15,5 +15,8 @@ int file_verification(const char* filename);
 int is_number(char* str);
 void write_log(char *writing);
 char *read_from_pipe(int pipe_fd);
+void add_user_to_list(user new_user);
+int remove_user_from_list(int user_id);
+void print_user_list();
 
 #endif

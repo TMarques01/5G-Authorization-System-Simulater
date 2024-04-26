@@ -34,7 +34,6 @@ void write_log(char *writing){
     sem_post(log_semaphore);
 }
 
-
 // Function to read from the pipe
 char *read_from_pipe(int pipe_fd){
 
@@ -51,7 +50,6 @@ char *read_from_pipe(int pipe_fd){
     }
 }
 
-
 //Função para verificar se uma string é um número
 int is_number(char* str) {
     for (int i = 0; str[i] != '\0'; i++) {
@@ -61,7 +59,6 @@ int is_number(char* str) {
     }
     return 1; // É um número
 }
-
 
 //Função de verificação do ficheiro
 int file_verification(const char* filename) {
@@ -121,3 +118,75 @@ int file_verification(const char* filename) {
     return 0; // Sucesso
 }
 
+// Função para adicionar um usuário à lista ligada, recebendo diretamente uma struct user
+void add_user_to_list(user new_user) {
+    // Criando um novo nó para a lista
+    users_list *new_node = (users_list *)malloc(sizeof(users_list));
+    if (new_node == NULL) {
+        fprintf(stderr, "Failed to allocate memory for new user node\n");
+        return;
+    }
+
+    // Inicializando o novo nó com os dados fornecidos
+    new_node->user = new_user;
+    new_node->next = NULL;
+
+    // Adicionando o novo nó à lista ligada
+    if (mem == NULL) {
+        // A lista está vazia, o novo nó se torna a cabeça da lista
+        mem = new_node;
+    } else {
+        // Encontrar o final da lista e adicionar o novo nó
+        users_list *current = mem;
+        while (current->next != NULL) {
+            current = current->next;
+        }
+        current->next = new_node;
+    }
+}
+
+// Função para remover um usuário específico da lista pelo ID
+int remove_user_from_list(int user_id) {
+    users_list *current = mem;
+    users_list *previous = NULL;
+
+    if (mem == NULL) {
+        return -1; // Lista vazia
+    }
+
+    // Procurar o usuário a ser removido
+    while (current != NULL && current->user.id != user_id) {
+        previous = current;
+        current = current->next;
+    }
+
+    if (current == NULL) {
+        return -1; // Usuário não encontrado
+    }
+
+    // Remover o usuário encontrado
+    if (previous == NULL) {
+        // O usuário a ser removido está na cabeça da lista
+        mem = current->next;
+    } else {
+        // O usuário está em algum lugar após o primeiro elemento
+        previous->next = current->next;
+    }
+
+    // Libera a memória do nó removido
+    free(current);
+
+    return 0; // Sucesso
+}
+
+// Print user list
+void print_user_list() {
+    users_list *current = mem;
+    printf("Users in the list:\n");
+    while (current != NULL) {
+        printf("ID: %d, Plafond: %d, Max Request: %d, Video: %d, Music: %d, Social: %d, Reserved Data: %d\n",
+               current->user.id, current->user.initial_plafond, current->user.max_request,
+               current->user.video, current->user.music, current->user.social, current->user.dados_reservar);
+        current = current->next;
+    }
+}

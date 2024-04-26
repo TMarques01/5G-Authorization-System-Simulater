@@ -11,6 +11,7 @@ user user_data;
 
 
 void handle_signal(int sigint){
+    //remove_user_from_list(getpid());
     exit(0);
 }
 
@@ -18,7 +19,6 @@ void handle_signal(int sigint){
 
 int verify_data(int argc, char **argv) {
     for (int i = 1; i < argc; i++){ // Começa em 1 para ignorar o nome do programa
-        printf("%s\n",argv[i]);
         for (int j = 0; argv[i][j] != '\0'; j++) {
             if (!isdigit(argv[i][j])) {
                 printf("Dados incorretos!\n");
@@ -127,6 +127,10 @@ int main(int argc, char* argv[]){
         user_data.id = getpid();
     }
 
+    //add_user_to_list(user_data);
+
+    //print_user_list();
+
     printf("YOUR ID: %d\n", getpid());
 
     if ((fd_named_pipe = open(USER_PIPE, O_WRONLY | O_NONBLOCK)) < 0) {
@@ -138,13 +142,12 @@ int main(int argc, char* argv[]){
 
         signal(SIGINT, handle_signal);
         
-        printf("login %d\n", login);
         if (login == 0){
             fgets(buffer, 256, stdin);
             buffer[strcspn(buffer, "\n")] = 0;
 
             if (process_input(buffer) != 1){ // Verify data
-                printf("VALORES ERRADOS\n");
+                printf("WRONG VALUES\n");
                 exit(1);
             }
 
@@ -158,7 +161,7 @@ int main(int argc, char* argv[]){
             buffer[strcspn(buffer, "\n")] = 0;
 
             if (process_input2(buffer) != 1){ // Verify data
-                printf("VALORES ERRADOS\n");
+                printf("WRONG VALUES\n");
                 exit(1);
             }
 

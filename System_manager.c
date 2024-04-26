@@ -4,72 +4,6 @@
 #include "System_manager.h"
 #include "funcoes.h"
 
-
-// ============= USERS LIST FUNCTIONS =============
- 
-// Function to create a new user node
-users_list* create_user_node(user userdata) {
-    users_list* newNode = (users_list*) malloc(sizeof(users_list));
-    if (newNode == NULL) {
-        fprintf(stderr, "Failed to allocate memory for new user node.\n");
-        exit(EXIT_FAILURE);
-    }
-    newNode->user = userdata; // Copia os dados do usuário
-    newNode->next = NULL;
-    return newNode;
-}
-
-// Function to check if the list is empty
-int is_list_empty(users_list* head) {
-    return (head == NULL);
-}
-
-// Function to add a user to the end of the list
-void add_list_user(users_list** head, user userdata) {
-    users_list* newNode = create_user_node(userdata);
-    if (is_list_empty(*head)) {
-        *head = newNode;
-        return;
-    }
-    users_list* current = *head;
-    while (current->next != NULL) {
-        current = current->next;
-    }
-    current->next = newNode;
-}
-
-// Functions to print users list
-void print_user_list() {
-    if (mem == NULL) {
-        printf("The user list is empty.\n");
-        return;
-    }
-
-    users_list *current = mem;
-    printf("User List:\n");
-    while (current != NULL) {
-        printf("ID: %d, Plafond: %d, Max Requests: %d, Video: %d, Music: %d, Social: %d, Reserved Data: %d\n",
-            current->user.id, current->user.initial_plafond, current->user.max_request, current->user.video,
-            current->user.music, current->user.social, current->user.dados_reservar);
-        current = current->next;
-    }
-}
-
-// Function to destroy user list
-void destroy_user_list() {
-    users_list *current = mem;
-    while (current != NULL) {
-        users_list *next = current->next; // Guarda o próximo nó
-        free(current); // Libera a memória do nó atual
-        current = next; // Move para o próximo nó
-    }
-    mem = NULL; // Garante que a memória compartilhada não aponte para um local inválido
-}
-
-
-
-
-
 // ============= PROCESSES AND THREADS =============
 
 // Monitor engine process function
@@ -80,19 +14,51 @@ void monitor_engine(){
 void *receiver(void *arg){
     write_log("THREAD RECEIVER CREATED");
 
-    int fd_user_pipe;
-    char *buffer;
+    int fd_user_pipe, fd_back_pipe;
+    fd_set read_set;
 
+    // Named pipes for reading
     if ((fd_user_pipe = open(USER_PIPE, O_RDONLY )) < 0) {
         perror("CANNOT OPEN USER_PIPE FOR READING\nS");
         exit(1);
     }
 
-    while (1){
-        buffer = read_from_pipe(fd_user_pipe);
-        printf("%s\n", buffer);
+    if ((fd_back_pipe = open(BACK_PIPE, O_RDONLY )) < 0) {
+        perror("CANNOT OPEN BACK_PIPE FOR READING\nS");
+        exit(1);
     }
 
+    int max_fd = (fd_user_pipe > fd_back_pipe) ? fd_user_pipe : fd_back_pipe;
+    max_fd += 1;  // Adiciona 1 ao maior descritor de arquivo
+
+    while (1){
+
+        // Open the FD
+        FD_ZERO(&read_set);
+        FD_SET(fd_user_pipe, &read_set);
+        FD_SET(fd_back_pipe, &read_set);
+
+        if (select(max_fd, &read_set, NULL, NULL, NULL) > 0){
+            if (FD_ISSET(fd_user_pipe, &read_set)){
+                char *user_buffer;
+                user_buffer = read_from_pipe(fd_user_pipe);   
+
+
+
+                FD_CLR(fd_user_pipe, &read_set);       
+            }
+            if (FD_ISSET(fd_back_pipe, &read_set)){
+                char *back_buffer;
+                back_buffer = read_from_pipe(fd_back_pipe);
+
+
+                FD_CLR(fd_back_pipe, &read_set);
+            }
+
+
+        }
+
+    }
 
     pthread_exit(NULL);
 }
@@ -161,6 +127,8 @@ void cleanup(){
     if (fclose(log_file) == EOF) write_log("ERROR CLOSIGN LOG FILE\n");
     if (unlink(USER_PIPE) == -1)write_log("ERROR UNLINKING PIPE USER_PIPE\n");
     if (unlink(BACK_PIPE) == -1)write_log("ERROR UNLINKING PIPE BACK_PIPE\n");
+    
+
     //Delete shared memory
 	if(shmdt(mem)== -1) write_log("ERROR IN shmdt");
 	if(shmctl(shm_id,IPC_RMID, NULL) == -1) write_log("ERROR IN shmctl");
@@ -204,7 +172,6 @@ void init_program(){
         printf("CANNOT CREAT OTHER MESSAGE QUEUE\n");
         exit(1);
     } 
-
     //Create de shared memory
 	int shsize= (sizeof(users_list)*config->max_mobile_users); // SM size
 	shm_id = shmget(IPC_PRIVATE, shsize, IPC_CREAT | IPC_EXCL | 0777);
@@ -217,6 +184,10 @@ void init_program(){
 		printf("Erro shmat\n");
 		exit(0);
 	}
+
+    //mem->next = NULL;
+    
+
 
     // Create monitor_engine_process
     monitor_engine_process = fork();
