@@ -4,6 +4,39 @@
 #include "System_manager.h"
 #include "funcoes.h"
 
+int is_dados_reservar_zero(users_list *list, int id) {
+    users_list *current = list;
+    while (current != NULL) {
+        if (current->user.id == id) {
+            return current->user.dados_reservar == 0 ? 1 : 0;
+        }
+        current = current->next;
+    }
+    return 0;  // Retorna 0 se o ID não for encontrado
+}
+
+int user_in_list(users_list *list, int id) {
+    users_list *current = list;
+    while (current != NULL) {
+        if (current->user.id == id) {
+            return 1;  // ID encontrado na lista
+        }
+        current = current->next;
+    }
+    return 0;  // ID não encontrado na lista
+}
+
+void add_to_dados_reservar(users_list *list, int id, int add_value) {
+    users_list *current = list;
+    while (current != NULL) {
+        if (current->user.id == id) {
+            current->user.dados_reservar = add_value;  // Adiciona o valor a "dados_reservar"
+            return;  // Retorna após adicionar o valor
+        }
+        current = current->next;
+    }
+}
+
 // ============= PROCESSES AND THREADS =============
 
 // Monitor engine process function
@@ -22,15 +55,15 @@ void *receiver(void *arg){
         perror("CANNOT OPEN USER_PIPE FOR READING\nS");
         exit(1);
     }
-
+    /*
     if ((fd_back_pipe = open(BACK_PIPE, O_RDONLY )) < 0) {
         perror("CANNOT OPEN BACK_PIPE FOR READING\nS");
         exit(1);
     }
-
+    
     int max_fd = (fd_user_pipe > fd_back_pipe) ? fd_user_pipe : fd_back_pipe;
     max_fd += 1;  // Adiciona 1 ao maior descritor de arquivo
-
+    */
     while (1){
 
         // Open the FD
@@ -38,15 +71,65 @@ void *receiver(void *arg){
         FD_SET(fd_user_pipe, &read_set);
         FD_SET(fd_back_pipe, &read_set);
 
-        if (select(max_fd, &read_set, NULL, NULL, NULL) > 0){
+        if (select(fd_user_pipe + 1, &read_set, NULL, NULL, NULL) > 0){
             if (FD_ISSET(fd_user_pipe, &read_set)){
+                sem_wait(user_sem);
                 char *user_buffer;
                 user_buffer = read_from_pipe(fd_user_pipe);   
+                user aux;
 
+                int type;
 
+                // Copy the original string
+                char buffer[1024];                              
+                strncpy(buffer, user_buffer, sizeof(buffer));   
+                buffer[sizeof(buffer) - 1] = '\0';              
 
-                FD_CLR(fd_user_pipe, &read_set);       
+                char *token = strtok(buffer, "#");   //Token to get the values
+                aux.id = atoi(token);
+
+                if (user_in_list(mem, aux.id) == 0){ // SE AINDA NÃO TIVER NA LISTA
+                    token = strtok(NULL, "#");                
+                    aux.initial_plafond = atoi(token);
+                    
+                    aux.dados_reservar = 0;
+                    add_user_to_list(aux);
+
+                } else if (user_in_list(mem, aux.id) == 1) { //SE JA TIVER NA LISTA
+
+                    if (is_dados_reservar_zero(mem, aux.id) == 1){ // if aux.dados_reserver == 0
+                        token = strtok(NULL, "#");
+
+                        if (strcmp(token, "MUSIC") == 0){
+                            type = 1;
+                        } else if (strcmp(token, "OTHER") == 0){
+                            type = 2;
+                        } else if (strcmp(token, "VIDEO") == 0){
+                            type = 3;
+                        }
+                        token = strtok(NULL, "#");
+
+                        // adiciona os valores que faltava à struct do user para 
+                        add_to_dados_reservar(mem, aux.id, atoi(token));
+                            
+                            
+                    }
+
+                    // continuar e enviar para a messague queue
+                    if ((type == 2) || (type == 1)){  // OTHER and MUSIC
+
+                    } else if (type == 3){  // VIDEO
+
+                    }
+
+                }
+                
+                memset(buffer, 0 ,sizeof(buffer));
+                FD_CLR(fd_user_pipe, &read_set); 
+                sem_post(user_sem);      
             }
+
+            /*
             if (FD_ISSET(fd_back_pipe, &read_set)){
                 char *back_buffer;
                 back_buffer = read_from_pipe(fd_back_pipe);
@@ -54,8 +137,7 @@ void *receiver(void *arg){
 
                 FD_CLR(fd_back_pipe, &read_set);
             }
-
-
+            */
         }
 
     }
@@ -124,10 +206,12 @@ void cleanup(){
     // Close log file, destroy semaphoro and pipes
     if (sem_close(log_semaphore) == -1) write_log("ERROR CLOSING LOG SEMAPHORE\n");
     if (sem_unlink(LOG_SEM_NAME) == -1 ) write_log ("ERROR UNLINKING LOG SEMAPHORE\n");
+    if (sem_close(user_sem) == -1) write_log("ERROR CLOSING USER SEMAPHORE\n");
+    if (sem_unlink(USER_SEM) == -1 ) write_log ("ERROR UNLINKING USER SEMAPHORE\n");
     if (fclose(log_file) == EOF) write_log("ERROR CLOSIGN LOG FILE\n");
     if (unlink(USER_PIPE) == -1)write_log("ERROR UNLINKING PIPE USER_PIPE\n");
     if (unlink(BACK_PIPE) == -1)write_log("ERROR UNLINKING PIPE BACK_PIPE\n");
-    
+
 
     //Delete shared memory
 	if(shmdt(mem)== -1) write_log("ERROR IN shmdt");
@@ -185,9 +269,12 @@ void init_program(){
 		exit(0);
 	}
 
-    //mem->next = NULL;
-    
-
+    sem_unlink(USER_SEM);
+    user_sem = sem_open(USER_SEM, O_CREAT | O_EXCL, 0777, 1);
+    if (user_sem == SEM_FAILED) {
+        perror("sem_open");
+        exit(1);
+    }
 
     // Create monitor_engine_process
     monitor_engine_process = fork();

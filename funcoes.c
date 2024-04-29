@@ -182,11 +182,11 @@ int remove_user_from_list(int user_id) {
 // Print user list
 void print_user_list() {
     users_list *current = mem;
+    current = current->next;
     printf("Users in the list:\n");
     while (current != NULL) {
-        printf("ID: %d, Plafond: %d, Max Request: %d, Video: %d, Music: %d, Social: %d, Reserved Data: %d\n",
-               current->user.id, current->user.initial_plafond, current->user.max_request,
-               current->user.video, current->user.music, current->user.social, current->user.dados_reservar);
+        printf("ID: %d, Plafond: %d, Reserved Data: %d\n",
+               current->user.id, current->user.initial_plafond,current->user.dados_reservar);
         current = current->next;
     }
 }

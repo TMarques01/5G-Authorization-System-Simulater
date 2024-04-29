@@ -11,7 +11,6 @@ user user_data;
 
 
 void handle_signal(int sigint){
-    //remove_user_from_list(getpid());
     exit(0);
 }
 
@@ -117,23 +116,26 @@ int main(int argc, char* argv[]){
         exit(0);
     }
     
+    int video, music, social,max_request;
+
     if (verify_data(argc, argv) != 0){
         user_data.initial_plafond = atoi(argv[1]);
-        user_data.max_request = atoi(argv[2]);
-        user_data.video = atoi(argv[3]);
-        user_data.video = atoi(argv[4]);
-        user_data.social = atoi(argv[5]);
+        max_request = atoi(argv[2]);
+        video = atoi(argv[3]);
+        music = atoi(argv[4]);
+        social = atoi(argv[5]);
         user_data.dados_reservar = atoi(argv[6]);
         user_data.id = getpid();
+    } else {
+        printf("WRONG DATA\n");
+        exit(1);
     }
-
-    //add_user_to_list(user_data);
-
-    //print_user_list();
 
     printf("YOUR ID: %d\n", getpid());
 
-    if ((fd_named_pipe = open(USER_PIPE, O_WRONLY | O_NONBLOCK)) < 0) {
+    signal(SIGINT, handle_signal);  
+
+    if ((fd_named_pipe = open(USER_PIPE, O_WRONLY)) < 0) {
         perror("CANNOT OPEN PIPE FOR WRITING: ");
         exit(0);
     }
@@ -143,6 +145,7 @@ int main(int argc, char* argv[]){
         signal(SIGINT, handle_signal);
         
         if (login == 0){
+            printf("LOGIN: \n");
             fgets(buffer, 256, stdin);
             buffer[strcspn(buffer, "\n")] = 0;
 
@@ -162,12 +165,32 @@ int main(int argc, char* argv[]){
 
             if (process_input2(buffer) != 1){ // Verify data
                 printf("WRONG VALUES\n");
-                exit(1);
+                
+            } else {
+                
+                char aux[1024];                         // Copy the original buffer for verifications                        
+                strncpy(aux, buffer, sizeof(aux));   
+                aux[sizeof(aux) - 1] = '\0';      
+
+                char *token = strtok(aux, "#");
+                token = strtok(NULL, "#");              // Taking the "MUSIC" or "OTHER" or "SOCIAL"
+
+                for (int i = 0; i < max_request; i++){
+
+                    write(fd_named_pipe, buffer, sizeof(buffer));
+                    
+                    if (strcmp(token, "MUSIC") == 0){
+                        sleep(music/1000);
+                    } else if (strcmp(token, "OTHER") == 0){
+                        sleep(social/1000);
+                    } else if (strcmp(token, "VIDEO") == 0){
+                        sleep(video/1000);
+                    }
+
+                }
+                
+                break;
             }
-
-            write(fd_named_pipe, buffer, sizeof(buffer));
-
-            memset(buffer, 0 , sizeof(buffer));
         }
     }
 }

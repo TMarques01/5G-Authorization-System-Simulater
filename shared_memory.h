@@ -38,10 +38,12 @@ typedef struct program_init{
 // Struct dos users
 typedef struct user{
     int initial_plafond; 
+    /*
     int max_request;
     int video;
     int music;
     int social;
+    */
     int dados_reservar;
     int id;
 }user;
@@ -89,6 +91,6 @@ int mq_o_id;
 int mq_id;
 
 //Sem
-sem_t *user_list;
+sem_t *user_sem;
 
 #endif
