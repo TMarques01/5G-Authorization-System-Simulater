@@ -46,6 +46,7 @@ typedef struct user{
     */
     int dados_reservar;
     int id;
+    int count;
 }user;
 
 // Lista ligada dos users
@@ -58,12 +59,12 @@ typedef struct users_list{
 typedef struct {
    long priority;
    user current_user;
-}video_queue;
+} video_queue;
 
 typedef struct {
    long priority;
    user current_user;
-}other_queue;
+} other_queue;
 
 
 // Shared memory variable

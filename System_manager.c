@@ -48,6 +48,7 @@ void *receiver(void *arg){
     write_log("THREAD RECEIVER CREATED");
 
     int fd_user_pipe, fd_back_pipe;
+    int count = -1;
     fd_set read_set;
 
     // Named pipes for reading
@@ -73,7 +74,9 @@ void *receiver(void *arg){
 
         if (select(fd_user_pipe + 1, &read_set, NULL, NULL, NULL) > 0){
             if (FD_ISSET(fd_user_pipe, &read_set)){
+
                 sem_wait(user_sem);
+
                 char *user_buffer;
                 user_buffer = read_from_pipe(fd_user_pipe);   
                 user aux;
@@ -94,6 +97,8 @@ void *receiver(void *arg){
                     
                     aux.dados_reservar = 0;
                     add_user_to_list(aux);
+                    count++;
+                    aux.count = count;
 
                 } else if (user_in_list(mem, aux.id) == 1) { //SE JA TIVER NA LISTA
 
@@ -110,15 +115,25 @@ void *receiver(void *arg){
                         token = strtok(NULL, "#");
 
                         // adiciona os valores que faltava à struct do user para 
-                        add_to_dados_reservar(mem, aux.id, atoi(token));
-                            
-                            
+                        add_to_dados_reservar(mem, aux.id, atoi(token));   
                     }
-
+                    printf("type %d\n", type);
                     // continuar e enviar para a messague queue
                     if ((type == 2) || (type == 1)){  // OTHER and MUSIC
+                        other_queue other;
+                        other.priority = type;
+                        other.current_user= aux;
+
+                        msgsnd(mq_o_id, &other, sizeof(other_queue) - sizeof(long), 0);
 
                     } else if (type == 3){  // VIDEO
+                        video_queue video;
+                        video.priority = type;
+                        video.current_user = aux;
+
+                        printf("entrou VIDEO\n");
+
+                        msgsnd(mq_v_id, &video, sizeof(video_queue) - sizeof(long), 0);
 
                     }
 
@@ -126,7 +141,9 @@ void *receiver(void *arg){
                 
                 memset(buffer, 0 ,sizeof(buffer));
                 FD_CLR(fd_user_pipe, &read_set); 
-                sem_post(user_sem);      
+
+                sem_post(user_sem);  
+
             }
 
             /*
@@ -139,7 +156,6 @@ void *receiver(void *arg){
             }
             */
         }
-
     }
 
     pthread_exit(NULL);
@@ -148,15 +164,52 @@ void *receiver(void *arg){
 // Sender function
 void *sender(void *arg){
     write_log("THREAD SENDER CREATED");
+
+
+
+
+    video_queue video;
+    //other_queue other;
+
+    while (1){
+        msgrcv(mq_v_id, &video, sizeof(video) - sizeof(long), 0, 0);
+        printf("ID %d, intial plafond %d ", video.current_user.id, video.current_user.initial_plafond);
+        write(pipes[video.current_user.count][1], &video, sizeof(video_queue));
+    }
+
+
+
     pthread_exit(NULL);
 } 
+
+// Autorization engines
+
+void authorization_engine(){
+
+
+}
+
 
 // Authorization request manager function
 void authorization_request_manager(){
 
+    pid_t main_pid = getpid();
+
     // Create named pipes
     create_named_pipe(USER_PIPE);
     create_named_pipe(BACK_PIPE);
+
+    int pipes[config->auth_servers];
+    create_named_pipe(pipes);
+
+    for (int i = 0; i < config->auth_servers; i++){
+        if (getpid() == main_pid){
+            if (fork() == 0){
+                authorization_engine();
+                exit(0);
+            }
+        }
+    }
 
     // Argumento para já será 0
     if (pthread_create(&receiver_thread, NULL, receiver, 0) != 0) {
@@ -325,7 +378,5 @@ int main(int argc, char* argv[]){
     // Signal to end program
     signal(SIGINT, cleanup);
 
-    while(1){
-        
-    }
+    while(1){}
 }

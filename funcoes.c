@@ -5,6 +5,15 @@
 #include "shared_memory.h"
 #include "funcoes.h"
 
+// Creat Uname pipes
+void create_unnamed_pipes(int pipes[][2]){
+  for (int i = 0; i < config->auth_servers; i++) {
+        if (pipe(pipes[i]) == -1) {
+          print("CANNOT CREATE UNNAMED PIPE -> EXITING\n");
+          exit(1);
+        }
+    }
+}
 
 // Creat Named pipes
 void create_named_pipe(char *name){ 
