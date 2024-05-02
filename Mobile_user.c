@@ -116,7 +116,7 @@ int main(int argc, char* argv[]){
         exit(0);
     }
     
-    int video, music, social,max_request;
+    int video, music, social, max_request;
 
     if (verify_data(argc, argv) != 0){
         user_data.initial_plafond = atoi(argv[1]);
@@ -128,7 +128,7 @@ int main(int argc, char* argv[]){
         user_data.id = getpid();
     } else {
         printf("WRONG DATA\n");
-        exit(1);
+        exit(0);
     }
 
     printf("YOUR ID: %d\n", getpid());
@@ -151,13 +151,15 @@ int main(int argc, char* argv[]){
 
             if (process_input(buffer) != 1){ // Verify data
                 printf("WRONG VALUES\n");
-                exit(1);
+                
+            } else {
+                write(fd_named_pipe, buffer, sizeof(buffer));
+
+                login++;
+                memset(buffer, 0 , sizeof(buffer));
             }
 
-            write(fd_named_pipe, buffer, sizeof(buffer));
 
-            login++;
-            memset(buffer, 0 , sizeof(buffer));
 
         } else if (login == 1){
             fgets(buffer, 256, stdin);
@@ -188,7 +190,6 @@ int main(int argc, char* argv[]){
                     }
 
                 }
-                
                 break;
             }
         }

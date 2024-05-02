@@ -4,6 +4,15 @@
 #include "shared_memory.h"
 
 #define USER_SEM "user_sem"
+#define AUTH_SEM "authorization_engine_sem"
+
+
+
+struct DispatcherArgs {
+  int (*pipes)[2];
+  struct Queue* queue_video;
+  struct Queue* queue_other;
+};
 
 // Process and Threads
 void monitor_engine();
@@ -18,12 +27,4 @@ void add_to_dados_reservar(users_list *list, int id, int add_value);
 void cleanup();
 void init_log();
 void init_program();
-/*
-// Auxiliar Functions
-void create_named_pipe(char *name);
-int file_verification(const char* filename);
-int is_number(char* str);
-void write_log(char *writing);
-char *read_from_pipe(int pipe_fd);
-*/
 #endif

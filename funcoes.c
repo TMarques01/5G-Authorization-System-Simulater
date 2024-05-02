@@ -9,7 +9,7 @@
 void create_unnamed_pipes(int pipes[][2]){
   for (int i = 0; i < config->auth_servers; i++) {
         if (pipe(pipes[i]) == -1) {
-          print("CANNOT CREATE UNNAMED PIPE -> EXITING\n");
+          printf("CANNOT CREATE UNNAMED PIPE -> EXITING\n");
           exit(1);
         }
     }
@@ -141,12 +141,12 @@ void add_user_to_list(user new_user) {
     new_node->next = NULL;
 
     // Adicionando o novo nó à lista ligada
-    if (mem == NULL) {
+    if (shm->mem == NULL) {
         // A lista está vazia, o novo nó se torna a cabeça da lista
-        mem = new_node;
+        shm->mem = new_node;
     } else {
         // Encontrar o final da lista e adicionar o novo nó
-        users_list *current = mem;
+        users_list *current = shm->mem;
         while (current->next != NULL) {
             current = current->next;
         }
@@ -156,10 +156,10 @@ void add_user_to_list(user new_user) {
 
 // Função para remover um usuário específico da lista pelo ID
 int remove_user_from_list(int user_id) {
-    users_list *current = mem;
+    users_list *current = shm->mem;
     users_list *previous = NULL;
 
-    if (mem == NULL) {
+    if (shm->mem == NULL) {
         return -1; // Lista vazia
     }
 
@@ -176,7 +176,7 @@ int remove_user_from_list(int user_id) {
     // Remover o usuário encontrado
     if (previous == NULL) {
         // O usuário a ser removido está na cabeça da lista
-        mem = current->next;
+        shm->mem = current->next;
     } else {
         // O usuário está em algum lugar após o primeiro elemento
         previous->next = current->next;
@@ -190,12 +190,112 @@ int remove_user_from_list(int user_id) {
 
 // Print user list
 void print_user_list() {
-    users_list *current = mem;
+    users_list *current = shm->mem;
     current = current->next;
     printf("Users in the list:\n");
     while (current != NULL) {
-        printf("ID: %d, Plafond: %d, Reserved Data: %d\n",
-               current->user.id, current->user.initial_plafond,current->user.dados_reservar);
+        printf("ID: %d, Plafond: %d, Actual Plafond %d,Reserved Data: %d\n",
+               current->user.id, current->user.initial_plafond, current->user.current_plafond, current->user.dados_reservar);
+            current = current->next;
+    }
+}
+
+
+// Function to create a new node
+struct Node* createNode(char *command) {
+    struct Node* newNode = (struct Node*)malloc(sizeof(struct Node));
+    newNode->command = command;
+    newNode->next = NULL;
+    return newNode;
+}
+
+// Function to create a new queue
+struct Queue* createQueue() {
+    struct Queue* newQueue = (struct Queue*)malloc(sizeof(struct Queue));
+    newQueue->front = newQueue->rear = NULL;
+    return newQueue;
+}
+
+// Function to check if the queue is empty
+int isEmpty(struct Queue* queue) {
+    return (queue->front == NULL);
+}
+
+// Function to add an element to the rear of the queue
+void enqueue(struct Queue* queue, char *command) {
+    char *command_copy = strdup(command); 
+    struct Node* newNode = createNode(command_copy);
+    if (isEmpty(queue)) {
+        queue->front = queue->rear = newNode;
+        return;
+    }
+    queue->rear->next = newNode;
+    queue->rear = newNode;
+}
+
+char* dequeue(struct Queue* queue) {
+    if (isEmpty(queue)) {
+        return NULL;
+    }
+    struct Node* temp = queue->front;
+    char* command = (char*) malloc(strlen(temp->command) + 1);
+    strcpy(command, temp->command);
+    queue->front = temp->next;
+    free(temp->command);
+    free(temp);
+    if (queue->front == NULL) {
+        queue->rear = NULL;
+    }
+    return command;
+}
+
+
+int queue_size(struct Queue* queue) {
+    int count = 0;
+    struct Node* current = queue->front;
+    while (current != NULL) {
+        count++;
         current = current->next;
     }
+    return count;
+}
+
+void printQueue(struct Queue* queue) {
+    if (isEmpty(queue)) {
+        printf("Queue is empty.\n");
+        return;
+    }
+    struct Node* current = queue->front;
+    printf("Queue contents:\n");
+    while (current != NULL) {
+        printf("%s\n", current->command);
+        current = current->next;
+    }
+}
+
+void write_Queue(struct Queue* queue) {
+    char buf[124];
+    if (isEmpty(queue)) {
+        printf("No tasks waiting to execute in internal queue\n");
+        return;
+    }
+    struct Node* current = queue->front;
+    printf("Queue contents:\n");
+    while (current != NULL) {
+        memset(buf, 0, 124); 
+        strcpy(buf,current->command);
+        printf("%s\n",buf);
+        current = current->next;
+    }
+}
+
+void destroyQueue(struct Queue* queue) {
+    struct Node* current = queue->front;
+    while (current != NULL) {
+        struct Node* next = current->next;
+        free(current->command);
+        free(current);
+        current = next;
+    }
+    free(queue);
 }

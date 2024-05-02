@@ -21,7 +21,6 @@
 
 #define LOG_SEM_NAME "log_semaphore"
 
-
 // Pipe Names
 #define USER_PIPE "user_pipe"
 #define BACK_PIPE "back_pipe"
@@ -37,39 +36,43 @@ typedef struct program_init{
 
 // Struct dos users
 typedef struct user{
-    int initial_plafond; 
-    /*
-    int max_request;
-    int video;
-    int music;
-    int social;
-    */
+    int initial_plafond;
+    int current_plafond; 
     int dados_reservar;
     int id;
-    int count;
 }user;
 
 // Lista ligada dos users
 typedef struct users_list{
-	struct user user;
+	user user;
 	struct users_list * next;
 }users_list;
 
-// Message queue struct
-typedef struct {
-   long priority;
-   user current_user;
-} video_queue;
-
-typedef struct {
-   long priority;
-   user current_user;
-} other_queue;
-
-
 // Shared memory variable
-users_list *mem;
+typedef struct{
+    users_list *mem;
+    int *authorization_free;
+} shared_m;
+
+shared_m *shm;
 int shm_id;
+
+// Video Queue and Other Queue
+typedef struct Node {
+    char *command;
+    struct Node* next;
+}Node;
+
+typedef struct Queue {
+    struct Node* front;
+    struct Node* rear;
+}Queue;
+
+// Queue Pointer
+struct Queue* queue_video;
+struct Queue* queue_other;
+
+//======================================
 
 // Initial config variable
 program_init *config;
@@ -87,11 +90,10 @@ time_t now;
 struct tm *t;
 
 //Message Queue
-int mq_v_id;
-int mq_o_id;
 int mq_id;
 
-//Sem
+//Semaphore
 sem_t *user_sem;
+sem_t *autho_free;
 
 #endif
