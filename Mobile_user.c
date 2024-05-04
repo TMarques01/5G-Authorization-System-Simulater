@@ -6,7 +6,6 @@
 #include "funcoes.h"
 
 int fd_named_pipe, login = 0;;
-char buffer[256];
 user user_data;
 
 
@@ -71,7 +70,7 @@ int process_input(const char *input) {
 
 int is_valid_keyword(const char *str) {
     // Verifica se a palavra é uma das opções válidas
-    return strcmp(str, "MUSIC") == 0 || strcmp(str, "VIDEO") == 0 || strcmp(str, "OTHER") == 0;
+    return strcmp(str, "MUSIC") == 0 || strcmp(str, "VIDEO") == 0 || strcmp(str, "SOCIAL") == 0;
 }
 
 int process_input2(const char *input) {
@@ -145,12 +144,13 @@ int main(int argc, char* argv[]){
         signal(SIGINT, handle_signal);
         
         if (login == 0){
-            printf("LOGIN: \n");
-            fgets(buffer, 256, stdin);
-            buffer[strcspn(buffer, "\n")] = 0;
+            char buffer[256];
+            sprintf(buffer, "%d#%d", getpid(), user_data.initial_plafond);
+            printf("LOGIN %s\n", buffer);
 
             if (process_input(buffer) != 1){ // Verify data
                 printf("WRONG VALUES\n");
+                exit(0);
                 
             } else {
                 write(fd_named_pipe, buffer, sizeof(buffer));
@@ -162,33 +162,37 @@ int main(int argc, char* argv[]){
 
 
         } else if (login == 1){
-            fgets(buffer, 256, stdin);
-            buffer[strcspn(buffer, "\n")] = 0;
+                
+            char aux[1024];  
+            char buffer_login[1024];                                           
 
-            if (process_input2(buffer) != 1){ // Verify data
+            sprintf(buffer_login, "%d#VIDEO#%d", getpid(), user_data.dados_reservar);
+            printf("VIDEO QUEUE: %s\n", buffer_login);
+
+
+            strncpy(aux, buffer_login, sizeof(aux));   
+            aux[sizeof(aux) - 1] = '\0';
+
+            char *token = strtok(aux, "#");
+            token = strtok(NULL, "#");              // Taking the "MUSIC" or "SOCIAL"
+
+            if (process_input2(buffer_login) != 1){ // Verify data
                 printf("WRONG VALUES\n");
+                exit(0);
                 
             } else {
-                
-                char aux[1024];                         // Copy the original buffer for verifications                        
-                strncpy(aux, buffer, sizeof(aux));   
-                aux[sizeof(aux) - 1] = '\0';      
-
-                char *token = strtok(aux, "#");
-                token = strtok(NULL, "#");              // Taking the "MUSIC" or "OTHER" or "SOCIAL"
-
+                // em vez de ter o for vais ter 3 thread a enviar
                 for (int i = 0; i < max_request; i++){
 
-                    write(fd_named_pipe, buffer, sizeof(buffer));
+                    write(fd_named_pipe, buffer_login, sizeof(buffer_login));
                     
                     if (strcmp(token, "MUSIC") == 0){
-                        sleep(music/1000);
-                    } else if (strcmp(token, "OTHER") == 0){
-                        sleep(social/1000);
+                        sleep(music);
+                    } else if (strcmp(token, "SOCIAL") == 0){
+                        sleep(social);
                     } else if (strcmp(token, "VIDEO") == 0){
-                        sleep(video/1000);
+                        sleep(video);
                     }
-
                 }
                 break;
             }

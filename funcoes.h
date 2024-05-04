@@ -18,7 +18,7 @@ char *read_from_pipe(int pipe_fd);
 void add_user_to_list(user new_user);
 int remove_user_from_list(int user_id);
 void print_user_list();
-void create_unnamed_pipes(int pipes[][2]);
+//void create_unnamed_pipes(int pipes[][2]);
 
 
 struct Queue* createQueue();

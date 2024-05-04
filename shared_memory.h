@@ -96,4 +96,6 @@ int mq_id;
 sem_t *user_sem;
 sem_t *autho_free;
 
+int running;
+
 #endif
