@@ -4,10 +4,35 @@
 #include "System_manager.h"
 #include "funcoes.h"
 #define DEBUG
+#define LIST
 
 // Mutex
 pthread_mutex_t video_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t other_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+
+// Creat Unnamed pipes
+void create_unnamed_pipes(int pipes[][2]){
+  for (int i = 0; i < config->auth_servers; i++) {
+        if (pipe(pipes[i]) == -1) {
+          write_log("CANNOT CREATE UNNAMED PIPE -> EXITING");
+          exit(1);
+        }
+    }
+}
+
+// Verify wich AE is free
+int check_authorization_free(shared_m *shdared_data, int i){
+    sem_wait(user_sem);
+    if (shdared_data->authorization_free[i] == 0){
+        shdared_data->authorization_free[i] = 1;
+        sem_post(user_sem);
+        return 1;
+    } else {
+        sem_post(user_sem);
+        return 0;
+    }
+}
 
 // ============= Queue Functions =============
 
@@ -55,6 +80,7 @@ void enqueue(struct Queue* queue, char *command, int i) {
 
 }
 
+// Function to take the last element
 char* dequeue(struct Queue* queue, int i) {
 
     pthread_mutex_t* mutex;
@@ -89,6 +115,7 @@ char* dequeue(struct Queue* queue, int i) {
     return command;
 }
 
+// Returns queue size
 int queue_size(struct Queue* queue) {
     int count = 0;
     struct Node* current = queue->front;
@@ -99,6 +126,7 @@ int queue_size(struct Queue* queue) {
     return count;
 }
 
+// Verify if queue is empty
 int isEmpty(struct Queue* queue, int i) {
     pthread_mutex_t* mutex;
 
@@ -115,6 +143,7 @@ int isEmpty(struct Queue* queue, int i) {
     return empty;
 }
 
+// Print the Queue
 void printQueue(struct Queue* queue, int i) {
     if (isEmpty(queue, i)) {
         printf("Queue is empty.\n");
@@ -128,9 +157,9 @@ void printQueue(struct Queue* queue, int i) {
     }
 }
 
-void write_Queue(struct Queue* queue, int i) {
+void write_Queue(struct Queue* queue) {
     char buf[124];
-    if (isEmpty(queue, i)) {
+    if (queue->front == NULL) {
         printf("No tasks waiting to execute in internal queue\n");
         return;
     }
@@ -145,55 +174,98 @@ void write_Queue(struct Queue* queue, int i) {
 }
 
 void destroyQueue(struct Queue* queue) {
-    struct Node* current = queue->front;
-    while (current != NULL) {
+    if ((queue->front == NULL) || (queue->rear == NULL)){
+        free(queue);
+        return;
+    } else {
+        struct Node* current = queue->front;
         struct Node* next = current->next;
-        free(current->command);
-        free(current);
-        current = next;
-    }
-    free(queue);
-}
-
-// ============= =============
-
-// Creat Unnamed pipes
-void create_unnamed_pipes(int pipes[][2]){
-  for (int i = 0; i < config->auth_servers; i++) {
-        if (pipe(pipes[i]) == -1) {
-          write_log("CANNOT CREATE UNNAMED PIPE -> EXITING");
-          exit(1);
+        while (current != NULL) {
+            next = current->next;
+            free(current->command);
+            free(current);
+            current = next;
         }
+
+        queue->front = NULL;
+        queue->rear = NULL;
+
+        free(queue);
     }
 }
 
-int is_dados_reservar_zero(users_list *list, int id) {
-    users_list *current = list;
-    while (current != NULL) {
-        if (current->user.id == id) {
-            return current->user.dados_reservar == -1 ? 1 : 0;
-        }
-        current = current->next;
+// ============= Linked List Functions =============
+
+// Função para adicionar um usuário à lista ligada, recebendo diretamente uma struct user
+void add_user_to_list(user new_user) {
+    // Criando um novo nó para a lista
+    sem_wait(user_sem);
+    users_list *new_node = (users_list *)malloc(sizeof(users_list));
+    if (new_node == NULL) {
+        fprintf(stderr, "Failed to allocate memory for new user node\n");
+        return;
     }
-    return 0;  // Retorna 0 se o ID não for encontrado
+
+    // Inicializando o novo nó com os dados fornecidos
+    new_node->user = new_user;
+    new_node->next = NULL;
+
+    // Adicionando o novo nó à lista ligada
+    if (shm->mem == NULL) {
+        // A lista está vazia, o novo nó se torna a cabeça da lista
+        shm->mem = new_node;
+    } else {
+        // Encontrar o final da lista e adicionar o novo nó
+        users_list *current = shm->mem;
+        while (current->next != NULL) {
+            current = current->next;
+        }
+        current->next = new_node;
+    }
+    sem_post(user_sem);
 }
 
 int user_in_list(users_list *list, int id) {
+    sem_wait(user_sem);
     users_list *current = list;
     while (current != NULL) {
         if (current->user.id == id) {
+            sem_post(user_sem);
             return 1;  // ID encontrado na lista
         }
         current = current->next;
     }
+    sem_post(user_sem);
     return 0;  // ID não encontrado na lista
 }
 
+int is_dados_reservar_zero(users_list *list, int id) {
+    sem_wait(user_sem);
+    users_list *current = list;
+    while (current != NULL) {
+        if (current->user.id == id) {
+            if (current->user.dados_reservar == -1){
+                sem_post(user_sem);
+                return 1;
+            } else {
+                sem_post(user_sem);
+                return 0;
+            }
+
+        }
+        current = current->next;
+    }
+    sem_post(user_sem);
+    return 0;  // Retorna 0 se o ID não for encontrado
+}
+
 void add_to_dados_reservar(users_list *list, int id, int add_value) {
+    sem_wait(user_sem);
     users_list *current = list;
     while (current != NULL) {
         if (current->user.id == id) {
             current->user.dados_reservar = add_value;  // Adiciona o valor a "dados_reservar"
+            sem_post(user_sem);
             return;  // Retorna após adicionar o valor
         }
         current = current->next;
@@ -201,37 +273,99 @@ void add_to_dados_reservar(users_list *list, int id, int add_value) {
 }
 
 int update_plafond(shared_m *shared_data, int user_id) {
+    sem_wait(user_sem);
     users_list *current = shared_data->mem;  // Ponteiro para a cabeça da lista
     while (current != NULL) {
         if (current->user.id == user_id) {  // Verifica se é o usuário correto
             if (current->user.current_plafond >= current->user.dados_reservar) {
                 current->user.current_plafond -= current->user.dados_reservar;  // Subtrai dados_reservar
+                sem_post(user_sem);
                 return 0;
             } else {
+                current->user.current_plafond = 0;
+                sem_post(user_sem);
                 return 1;
             }
         }
         current = current->next;  // Move para o próximo elemento na lista
     }
+    sem_post(user_sem);
     return -1;
 }
 
 // Print user list
 void print_user_list() {
+    sem_wait(user_sem);
     users_list *current = shm->mem;
     current = current->next;
     printf("Users in the list:\n");
     while (current != NULL) {
-        printf("ID: %d, Plafond: %d, Actual Plafond %d,Reserved Data: %d\n",
+        printf("ID: %d, Plafond: %d, Actual Plafond %d, Reserved Data: %d\n",
                current->user.id, current->user.initial_plafond, current->user.current_plafond, current->user.dados_reservar);
-            current = current->next;
+                current = current->next;
     }
+
+    printf("\n");
+    sem_post(user_sem);
 }
 
 // ============= PROCESSES AND THREADS =============
 
 // Monitor engine process function
 void monitor_engine(){
+
+    /*
+    while (running){
+
+        sem_wait(user_sem);
+        users_list *current = shm->mem;
+        sem_post(user_sem);
+
+        current = current->next;
+        while(current != NULL) {
+            char log[124];
+            queue_msg msg_queue;
+            msg_queue.priority = 1;
+
+            if ((current->user.initial_plafond * 0.2 == current->user.current_plafond) && 
+                (current->user.initial_plafond * 0.1 < current->user.current_plafond) ){
+
+                sprintf(log, "ALERT 80%% (USER ID = %d) TRIGGERED", current->user.id);
+                msg_queue.id = current->user.id;
+                strcpy(msg_queue.message, log);
+
+                msgsnd(mq_id, &msg_queue, sizeof(msg_queue) - sizeof(long), 0);
+
+                write_log(log);
+
+            } else if ((current->user.initial_plafond * 0.1 == current->user.current_plafond) && 
+                    (current->user.current_plafond > 0)) {
+
+                sprintf(log, "ALERT 90%% (USER ID = %d) TRIGGERED", current->user.id);
+                msg_queue.id = current->user.id;
+                strcpy(msg_queue.message, log);
+
+                msgsnd(mq_id, &msg_queue, sizeof(msg_queue) - sizeof(long), 0);
+
+                write_log(log);
+                
+            } else if (current->user.current_plafond == 0) {
+
+                sprintf(log, "ALERT 100%% (USER ID = %d) TRIGGERED", current->user.id);
+                msg_queue.id = current->user.id;
+                strcpy(msg_queue.message, log);
+
+                msgsnd(mq_id, &msg_queue, sizeof(msg_queue) - sizeof(long), 0);
+
+                write_log(log);
+            }
+
+            memset(log, 0, sizeof(log));
+        }
+
+
+    }
+*/
 }
 
 // Receiver funcion
@@ -256,11 +390,11 @@ void *receiver(void *arg){
         perror("CANNOT OPEN BACK_PIPE FOR READING\nS");
         exit(1);
     }
-    */
+    
     
     int max_fd = (fd_user_pipe > fd_back_pipe) ? fd_user_pipe : fd_back_pipe;
     max_fd += 1;  // Adiciona 1 ao maior descritor de arquivo
-    
+    */
     while (running) {
 
         // Open the FD
@@ -268,7 +402,7 @@ void *receiver(void *arg){
         FD_SET(fd_user_pipe, &read_set);
         FD_SET(fd_back_pipe, &read_set);
 
-        if (select(max_fd, &read_set, NULL, NULL, NULL) > 0){
+        if (select(fd_user_pipe + 1, &read_set, NULL, NULL, NULL) > 0){
             if (FD_ISSET(fd_user_pipe, &read_set)){
 
                 char *user_buffer;
@@ -367,10 +501,7 @@ void *sender(void *arg){
 
                 for (int i = 0; i < config->auth_servers; i++){
 
-                    sem_wait(autho_free);
-
-                    if (shm->authorization_free[i] == 0){
-                        sem_post(autho_free);
+                    if (check_authorization_free(shm, i)){
 
                         char aux[64];
                         strcpy(aux, msg_video);
@@ -386,10 +517,8 @@ void *sender(void *arg){
                         }
 
                         break;
-                    }
-
-                    sem_post(autho_free);
-                }    
+                    }   
+                }  
             }
         } else {
             if (!isEmpty(queue_other, 1)){
@@ -402,11 +531,7 @@ void *sender(void *arg){
 
                     for (int i = 0; i < config->auth_servers; i++){
 
-                        sem_wait(autho_free);
-
-                        if (shm->authorization_free[i] == 0){
-
-                            sem_post(autho_free);
+                        if (check_authorization_free(shm, i)){
 
                             char aux[64];
                             strcpy(aux, msg_other);
@@ -420,11 +545,10 @@ void *sender(void *arg){
                             } else {
                                 write_log(log_msg);
                             }
+
                             break;
 
                         }
-
-                        sem_post(autho_free);
                     }
                 }  
             }
@@ -457,12 +581,6 @@ void authorization_engine(int id, int (*pipes)[2]){
             printf("AUTHORIZATION ENGINE %d MSG: %s\n",id + 1 ,msg);
             #endif
 
-            sem_wait(autho_free);
-            shm->authorization_free[id] = 1;
-            sem_post(autho_free);
-
-            sem_wait(user_sem);
-
             user aux;
 
             // Copy the original string
@@ -474,6 +592,7 @@ void authorization_engine(int id, int (*pipes)[2]){
 
             if (atoi(token) == 1){
                 printf("MENSAGEM BACKOFFICE %s\n", msg);
+
             } else {
 
                 aux.id = atoi(token);
@@ -485,7 +604,7 @@ void authorization_engine(int id, int (*pipes)[2]){
                     aux.dados_reservar = -1;
                     add_user_to_list(aux);
 
-                } else if (user_in_list(shm->mem, aux.id) == 1) { //SE JA TIVER NA LISTA
+                } else { //SE JA TIVER NA LISTA
 
                     if (is_dados_reservar_zero(shm->mem, aux.id) == 1){ // if aux.dados_reserver == -1
                         token = strtok(NULL, "#");
@@ -506,16 +625,16 @@ void authorization_engine(int id, int (*pipes)[2]){
                     }
                 }
             
-                #ifdef DEBUG
+                #ifdef LIST
                 print_user_list();
                 #endif 
 
                 char log[124];
-                sprintf(log, "AUTHORIZATION_ENGINE %d :VIDEO AUTHORIZATION REQUEST (ID = %d) PROCESSING COMPLETED", id + 1, aux.id);
+                sprintf(log, "AUTHORIZATION_ENGINE %d: VIDEO AUTHORIZATION REQUEST (ID = %d) PROCESSING COMPLETED", id + 1, aux.id);
                 write_log(log);
+                
 
             }
-            sem_post(user_sem);
 
             time(&end);
 
@@ -524,11 +643,12 @@ void authorization_engine(int id, int (*pipes)[2]){
                 sleep((config->auth_proc_time - elapsed) / 1000);
             }
 
-            sem_wait(autho_free);
+            sem_wait(user_sem);
             shm->authorization_free[id] = 0;
-            sem_post(autho_free);
+            sem_post(user_sem);
+        }
 
-        } 
+
     }
 }
 
@@ -583,6 +703,9 @@ void authorization_request_manager(){
         exit(1);
     }
 
+    destroyQueue(queue_other);
+    destroyQueue(queue_video);
+
 }
 
 // ============= MAIN PROGRAM =============
@@ -603,9 +726,6 @@ void cleanup(){
 
     // Close Message Queue
     if (msgctl(mq_id, IPC_RMID, NULL) == -1) write_log("ERROR CLOSING P MESSAGE QUEUE\n");
-
-    //destroyQueue(queue_other);
-    //destroyQueue(queue_video);
 
     pthread_mutex_destroy(&video_mutex);
     pthread_mutex_destroy(&other_mutex);

@@ -34,7 +34,7 @@ typedef struct program_init{
     int max_others_wait; 
 } program_init;
 
-// Struct dos users
+// User struct
 typedef struct user{
     int initial_plafond;
     int current_plafond; 
@@ -42,20 +42,24 @@ typedef struct user{
     int id;
 }user;
 
-// Lista ligada dos users
+// Message queue struct
+typedef struct {
+    long priority;
+    char *message;
+    int id;
+} queue_msg;
+
+// User linked list
 typedef struct users_list{
 	user user;
 	struct users_list * next;
 }users_list;
 
-// Shared memory variable
+// Shared memory struct
 typedef struct{
     users_list *mem;
     int *authorization_free;
 } shared_m;
-
-shared_m *shm;
-int shm_id;
 
 // Video Queue and Other Queue
 typedef struct Node {
@@ -88,6 +92,10 @@ pid_t monitor_engine_process;
 // Time Variables
 time_t now;
 struct tm *t;
+
+// Shared Memory variable
+shared_m *shm;
+int shm_id;
 
 //Message Queue
 int mq_id;

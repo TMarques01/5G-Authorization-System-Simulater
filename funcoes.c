@@ -117,33 +117,6 @@ int file_verification(const char* filename) {
     return 0; // Sucesso
 }
 
-// Função para adicionar um usuário à lista ligada, recebendo diretamente uma struct user
-void add_user_to_list(user new_user) {
-    // Criando um novo nó para a lista
-    users_list *new_node = (users_list *)malloc(sizeof(users_list));
-    if (new_node == NULL) {
-        fprintf(stderr, "Failed to allocate memory for new user node\n");
-        return;
-    }
-
-    // Inicializando o novo nó com os dados fornecidos
-    new_node->user = new_user;
-    new_node->next = NULL;
-
-    // Adicionando o novo nó à lista ligada
-    if (shm->mem == NULL) {
-        // A lista está vazia, o novo nó se torna a cabeça da lista
-        shm->mem = new_node;
-    } else {
-        // Encontrar o final da lista e adicionar o novo nó
-        users_list *current = shm->mem;
-        while (current->next != NULL) {
-            current = current->next;
-        }
-        current->next = new_node;
-    }
-}
-
 // Função para remover um usuário específico da lista pelo ID
 int remove_user_from_list(int user_id) {
     users_list *current = shm->mem;
@@ -177,5 +150,4 @@ int remove_user_from_list(int user_id) {
 
     return 0; // Sucesso
 }
-
 

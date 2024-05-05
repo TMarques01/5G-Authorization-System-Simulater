@@ -7,7 +7,7 @@
 
 int fd_named_pipe, login = 0, max_request, video_time, music_time, social_time;
 user user_data;
-pthread_t video, music, social;
+pthread_t video, music, social, message_queue;
 pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 
 void handle_signal(int sigint){
@@ -122,6 +122,22 @@ void *social_thread(void *arg){
     pthread_exit(NULL);
 }
 
+void *message_receiver(void *arg){
+
+    while (1){
+        queue_msg msg;
+
+        msgrcv(mq_id, &msg, sizeof(queue_msg) - sizeof(long), 1, 0);
+
+        if (msg.id == getpid()){
+            printf("%s\n", msg.message);
+        }
+
+    }
+
+    pthread_exit(NULL);
+}
+
 int main(int argc, char* argv[]){
 
     if (argc != 7){
@@ -168,6 +184,7 @@ int main(int argc, char* argv[]){
 
         } else if (login == 1){
 
+            
             // Create Threads
             if (pthread_create(&video, NULL, video_thread, NULL) != 0) {
                 printf("CANNOT CREATE VIDEO_THREAD\n");
@@ -184,6 +201,11 @@ int main(int argc, char* argv[]){
                 exit(1);
             }
 
+            if (pthread_create(&message_queue, NULL, message_receiver, NULL) != 0){
+                printf("CANNOT CREATE MESSAGE_THREAD\n");
+                exit(1);
+            }
+
             // Closing threads
             if (pthread_join(video, NULL) != 0){
                 printf("CANNOT JOIN VIDEO THREAD");
@@ -196,6 +218,11 @@ int main(int argc, char* argv[]){
             }
             
             if (pthread_join(social, NULL) != 0){
+                printf("CANNOT JOIN SOCIAL THREAD");
+                exit(1);
+            }
+
+            if (pthread_join(message_queue, NULL) != 0){
                 printf("CANNOT JOIN SOCIAL THREAD");
                 exit(1);
             }
