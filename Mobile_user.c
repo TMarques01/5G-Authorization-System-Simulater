@@ -5,15 +5,32 @@
 #include "System_manager.h"
 #include "funcoes.h"
 
-int fd_named_pipe, login = 0;;
+int fd_named_pipe, login = 0, max_request, video_time, music_time, social_time;
 user user_data;
-
+pthread_t video, music, social;
+pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 
 void handle_signal(int sigint){
+    printf("LOSING MOBILE USER...\n");
+
     exit(0);
 }
 
 // ============= DATA VERIFICATION FUNCTIONS =============
+
+int verify_max_request(){
+
+    pthread_mutex_lock(&mutex);
+    if (max_request != 0){
+        pthread_mutex_unlock(&mutex);
+        return 1;
+    } else {
+        pthread_mutex_unlock(&mutex);
+        printf("MAX REQUEST OVERPAST\n");
+        exit(0);
+        return 0;
+    }
+}
 
 int verify_data(int argc, char **argv) {
     for (int i = 1; i < argc; i++){ // Começa em 1 para ignorar o nome do programa
@@ -27,102 +44,97 @@ int verify_data(int argc, char **argv) {
     return 1;
 }
 
-int process_input(const char *input) {
-    char *part1, *part2;
-    char buffer[256];  // Buffer para armazenar a entrada de forma segura
-    char *hash_pos;
+void *video_thread(void *arg){
 
-    // Copia a entrada para o buffer para evitar modificar a string original
-    strncpy(buffer, input, sizeof(buffer));
-    buffer[sizeof(buffer) - 1] = '\0';
+    char buffer_login[256];
+    while (verify_max_request()){
 
-    // Encontra a posição do caractere '#'
-    hash_pos = strchr(buffer, '#');
-    if (hash_pos == NULL || strchr(hash_pos + 1, '#') != NULL) {
-        printf("ERROR: MUST HAVE ONE '#'.\n");
-        return 0;
+        sprintf(buffer_login, "%d#VIDEO#%d", getpid(), user_data.dados_reservar);
+        printf("VIDEO QUEUE: %s\n", buffer_login);
+
+        ssize_t bytes_read = write(fd_named_pipe, buffer_login, sizeof(buffer_login));
+        if (bytes_read < 0){
+            perror("ERROR WRITING FOR USER_PIPE\n");
+        } else {
+
+            pthread_mutex_lock(&mutex);
+            max_request--;
+            pthread_mutex_unlock(&mutex);
+
+            sleep(video_time);
+
+            memset(buffer_login, 0, sizeof(buffer_login));
+        }
     }
 
-    // Separa a string em duas partes
-    *hash_pos = '\0';  // Divide a string em duas, substituindo '#' por '\0'
-    part1 = buffer;
-    part2 = hash_pos + 1;
-
-    // Verifica se ambas as partes são numéricas usando a função is_number
-    if (!is_number(part1) || !is_number(part2)) {
-        printf("ERROR: BOTH PARTS SHOULD BE NUMERIC.\n");
-        return 0;
-    }
-
-    if (atoi(part1) != getpid()){
-        printf("ERROR: DIFFERENT ID\n");
-        return 0;
-    }
-
-    if (atoi(part2) != user_data.initial_plafond){
-        printf("ERROR: DIFFERENT INITIAL PLAFOND\n");
-        return 0;
-    }
-
-    // Se passar nas verificações, retorna verdadeiro
-    return 1;
+    pthread_exit(NULL);
 }
 
-int is_valid_keyword(const char *str) {
-    // Verifica se a palavra é uma das opções válidas
-    return strcmp(str, "MUSIC") == 0 || strcmp(str, "VIDEO") == 0 || strcmp(str, "SOCIAL") == 0;
+void *music_thread(void *arg){
+
+    char buffer_login[256];
+    while (verify_max_request()){
+
+        sprintf(buffer_login, "%d#MUSIC#%d", getpid(), user_data.dados_reservar);
+        printf("MUSIC QUEUE: %s\n", buffer_login);
+
+        ssize_t bytes_read = write(fd_named_pipe, buffer_login, sizeof(buffer_login));
+        if (bytes_read < 0){
+            perror("ERROR WRITING FOR USER_PIPE\n");
+        } else {
+
+            pthread_mutex_lock(&mutex);
+            max_request--;
+            pthread_mutex_unlock(&mutex);
+
+            sleep(music_time);
+
+            memset(buffer_login, 0, sizeof(buffer_login));
+        }
+    }
+
+    pthread_exit(NULL);
 }
 
-int process_input2(const char *input) {
-    char buffer[256];
-    strncpy(buffer, input, sizeof(buffer));
-    buffer[sizeof(buffer) - 1] = '\0';
+void *social_thread(void *arg){
 
-    // Separa a string pelas ocorrências de '#'
-    char *first = strtok(buffer, "#");
-    char *keyword = strtok(NULL, "#");
-    char *second = strtok(NULL, "#");
+    char buffer_login[256];
+    while (verify_max_request()){
 
-    // Verifica se todos os tokens foram obtidos corretamente
-    if (first == NULL || keyword == NULL || second == NULL) {
-        printf("ERROR: USE TWO '#'.\n");
-        return 0;
+        sprintf(buffer_login, "%d#SOCIAL#%d", getpid(), user_data.dados_reservar);
+        printf("SOCIAL QUEUE: %s\n", buffer_login);
+
+        ssize_t bytes_read = write(fd_named_pipe, buffer_login, sizeof(buffer_login));
+        if (bytes_read < 0){
+            perror("ERROR WRITING FOR USER_PIPE\n");
+        } else {
+
+            pthread_mutex_lock(&mutex);
+            max_request--;
+            pthread_mutex_unlock(&mutex);
+
+            sleep(social_time);
+
+            memset(buffer_login, 0, sizeof(buffer_login));
+        }
     }
-
-    // Verifica se o primeiro e o terceiro elementos são números e o segundo é uma palavra válida
-    if (!is_number(first) || !is_number(second) || !is_valid_keyword(keyword)) {
-        printf("ERROR: '123#WORD#456'\n");
-        return 0;
-    }
-
-    if (atoi(first) != getpid()){
-        printf("ERROR: DIFFERENT ID\n");
-        return 0;
-    }
-
-    if (atoi(second) != user_data.dados_reservar){
-        printf("ERROR: DIFFERENT RESERVED DATA\n");
-        return 0;
-    }
-
-    return 1; // A entrada é válida
+    
+    pthread_exit(NULL);
 }
 
 int main(int argc, char* argv[]){
 
     if (argc != 7){
-        printf("Número incorreto de argumentos\n");
+        printf("INCORRECT NUMBER OF ARGUMENTS\n");
         exit(0);
     }
     
-    int video, music, social, max_request;
-
     if (verify_data(argc, argv) != 0){
         user_data.initial_plafond = atoi(argv[1]);
         max_request = atoi(argv[2]);
-        video = atoi(argv[3]);
-        music = atoi(argv[4]);
-        social = atoi(argv[5]);
+        video_time = atoi(argv[3]);
+        music_time = atoi(argv[4]);
+        social_time = atoi(argv[5]);
         user_data.dados_reservar = atoi(argv[6]);
         user_data.id = getpid();
     } else {
@@ -148,53 +160,44 @@ int main(int argc, char* argv[]){
             sprintf(buffer, "%d#%d", getpid(), user_data.initial_plafond);
             printf("LOGIN %s\n", buffer);
 
-            if (process_input(buffer) != 1){ // Verify data
-                printf("WRONG VALUES\n");
-                exit(0);
-                
-            } else {
-                write(fd_named_pipe, buffer, sizeof(buffer));
+            write(fd_named_pipe, buffer, sizeof(buffer));
 
-                login++;
-                memset(buffer, 0 , sizeof(buffer));
-            }
-
-
+            login++;
+            memset(buffer, 0 , sizeof(buffer));
+            
 
         } else if (login == 1){
-                
-            char aux[1024];  
-            char buffer_login[1024];                                           
 
-            sprintf(buffer_login, "%d#VIDEO#%d", getpid(), user_data.dados_reservar);
-            printf("VIDEO QUEUE: %s\n", buffer_login);
+            // Create Threads
+            if (pthread_create(&video, NULL, video_thread, NULL) != 0) {
+                printf("CANNOT CREATE VIDEO_THREAD\n");
+                exit(1);
+            }
 
+            if (pthread_create(&music, NULL, music_thread, NULL) != 0) {
+                printf("CANNOT CREATE MUSIC_THREAD\n");
+                exit(1);
+            }
 
-            strncpy(aux, buffer_login, sizeof(aux));   
-            aux[sizeof(aux) - 1] = '\0';
+            if (pthread_create(&social, NULL, social_thread, NULL) != 0) {
+                printf("CANNOT CREATE SOCIAL_THREAD\n");
+                exit(1);
+            }
 
-            char *token = strtok(aux, "#");
-            token = strtok(NULL, "#");              // Taking the "MUSIC" or "SOCIAL"
+            // Closing threads
+            if (pthread_join(video, NULL) != 0){
+                printf("CANNOT JOIN VIDEO THREAD");
+                exit(1);
+            }
 
-            if (process_input2(buffer_login) != 1){ // Verify data
-                printf("WRONG VALUES\n");
-                exit(0);
-                
-            } else {
-                // em vez de ter o for vais ter 3 thread a enviar
-                for (int i = 0; i < max_request; i++){
-
-                    write(fd_named_pipe, buffer_login, sizeof(buffer_login));
-                    
-                    if (strcmp(token, "MUSIC") == 0){
-                        sleep(music);
-                    } else if (strcmp(token, "SOCIAL") == 0){
-                        sleep(social);
-                    } else if (strcmp(token, "VIDEO") == 0){
-                        sleep(video);
-                    }
-                }
-                break;
+            if (pthread_join(music, NULL) != 0){
+                printf("CANNOT JOIN MUSIC THREAD");
+                exit(1);
+            }
+            
+            if (pthread_join(social, NULL) != 0){
+                printf("CANNOT JOIN SOCIAL THREAD");
+                exit(1);
             }
         }
     }

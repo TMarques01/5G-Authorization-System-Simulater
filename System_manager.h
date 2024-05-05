@@ -12,6 +12,16 @@ struct ThreadArgs {
   struct Queue* queue_other;
 };
 
+int isEmpty(struct Queue* queue, int i);
+struct Queue* createQueue();
+char* dequeue(struct Queue* queue, int i);
+int queue_size(struct Queue* queue);
+void printQueue(struct Queue* queue, int i);
+void write_Queue(struct Queue* queue, int i);
+struct Node* createNode(char *command);
+void destroyQueue(struct Queue* queue);
+void enqueue(struct Queue* queue, char *command, int i);
+
 void create_unnamed_pipes(int pipes[][2]);
 int is_dados_reservar_zero(users_list *list, int id);
 int user_in_list(users_list *list, int id);
