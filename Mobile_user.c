@@ -28,7 +28,6 @@ int verify_max_request(){
         pthread_mutex_unlock(&mutex);
         printf("MAX REQUEST OVERPAST\n");
         exit(0);
-        return 0;
     }
 }
 
@@ -74,6 +73,7 @@ void *music_thread(void *arg){
 
     char buffer_login[256];
     while (verify_max_request()){
+        sleep(music_time/2);
 
         sprintf(buffer_login, "%d#MUSIC#%d", getpid(), user_data.dados_reservar);
         printf("MUSIC QUEUE: %s\n", buffer_login);
@@ -87,10 +87,10 @@ void *music_thread(void *arg){
             max_request--;
             pthread_mutex_unlock(&mutex);
 
-            sleep(music_time);
-
             memset(buffer_login, 0, sizeof(buffer_login));
-        }
+        }       
+             
+        sleep(music_time/2);
     }
 
     pthread_exit(NULL);
@@ -100,7 +100,7 @@ void *social_thread(void *arg){
 
     char buffer_login[256];
     while (verify_max_request()){
-
+        sleep(social_time/2);
         sprintf(buffer_login, "%d#SOCIAL#%d", getpid(), user_data.dados_reservar);
         printf("SOCIAL QUEUE: %s\n", buffer_login);
 
@@ -108,12 +108,12 @@ void *social_thread(void *arg){
         if (bytes_read < 0){
             perror("ERROR WRITING FOR USER_PIPE\n");
         } else {
-
+            
             pthread_mutex_lock(&mutex);
             max_request--;
             pthread_mutex_unlock(&mutex);
 
-            sleep(social_time);
+            sleep(social_time/2);
 
             memset(buffer_login, 0, sizeof(buffer_login));
         }
@@ -183,7 +183,6 @@ int main(int argc, char* argv[]){
             
 
         } else if (login == 1){
-
             
             // Create Threads
             if (pthread_create(&video, NULL, video_thread, NULL) != 0) {
@@ -216,16 +215,18 @@ int main(int argc, char* argv[]){
                 printf("CANNOT JOIN MUSIC THREAD");
                 exit(1);
             }
-            
+         
             if (pthread_join(social, NULL) != 0){
                 printf("CANNOT JOIN SOCIAL THREAD");
                 exit(1);
             }
 
             if (pthread_join(message_queue, NULL) != 0){
-                printf("CANNOT JOIN SOCIAL THREAD");
+                printf("CANNOT JOIN MESSAGE QUEUE THREAD");
                 exit(1);
             }
+
         }
+
     }
 }

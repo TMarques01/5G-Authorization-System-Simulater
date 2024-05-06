@@ -103,6 +103,7 @@ int mq_id;
 //Semaphore
 sem_t *user_sem;
 sem_t *autho_free;
+sem_t *fifo_full;
 
 int running;
 

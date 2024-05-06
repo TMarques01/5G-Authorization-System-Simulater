@@ -5,6 +5,7 @@
 
 #define USER_SEM "user_sem"
 #define AUTH_SEM "authorization_engine_sem"
+#define FIFO_FULL "fifo_full_sem"
 
 struct ThreadArgs {
   int (*pipes)[2];
@@ -19,7 +20,7 @@ int check_authorization_free(shared_m *shm_m, int i);
 int isEmpty(struct Queue* queue, int i);
 struct Queue* createQueue();
 char* dequeue(struct Queue* queue, int i);
-int queue_size(struct Queue* queue);
+int queue_size(struct Queue* queue, int i);
 void printQueue(struct Queue* queue, int i);
 void write_Queue(struct Queue* queue);
 struct Node* createNode(char *command);
