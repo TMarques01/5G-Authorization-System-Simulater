@@ -2,7 +2,7 @@
 //Tiago Marques 2022210638
 
 // read from pipe
-// mallocs para a lista ligada
+// mallocs para a lista ligad
 
 #include "System_manager.h"
 #include "funcoes.h"
@@ -13,6 +13,11 @@
 // Mutex
 pthread_mutex_t video_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t other_mutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_cond_t sender_cond = PTHREAD_COND_INITIALIZER;
+
+pthread_mutexattr_t monitor_attrmutex;
+pthread_condattr_t monitor_attrcond;
+int monitor_variable = 0;
 
 
 // Creat Unnamed pipes
@@ -26,10 +31,14 @@ void create_unnamed_pipes(int pipes[][2]){
 }
 
 // Verify wich AE is free
-int check_authorization_free(shared_m *shdared_data, int i){
+int check_authorization_free(int i){
+
     sem_wait(user_sem);
-    if (shdared_data->authorization_free[i] == 0){
-        shdared_data->authorization_free[i] = 1;
+    if (shm->authorization_free[i] == 0){
+        shm->authorization_free[i] = 1;
+        #ifdef DEBUG
+        //for (int i = 0; i < config->auth_servers; i++) printf("AUTHORIZATION_FREE[%d]: %d \n", i + 1, shm->authorization_free[i]);
+        #endif
         sem_post(user_sem);
         return 1;
     } else {
@@ -121,7 +130,8 @@ char* dequeue(struct Queue* queue, int i) {
 
 // Returns queue size
 int queue_size(struct Queue* queue, int i) {
-    
+
+    /*
     pthread_mutex_t* mutex;
 
     if (i == 0) {
@@ -129,15 +139,15 @@ int queue_size(struct Queue* queue, int i) {
     } else {
         mutex = &other_mutex;
     }
-    
-    pthread_mutex_lock(mutex);
+    */
+    //pthread_mutex_lock(mutex);
     int count = 0;
     struct Node* current = queue->front;
     while (current != NULL) {
         count++;
         current = current->next;
     }
-    pthread_mutex_unlock(mutex);
+    //pthread_mutex_unlock(mutex);
     return count;
 }
 
@@ -212,99 +222,89 @@ void destroyQueue(struct Queue* queue) {
 // ============= Linked List Functions =============
 
 // Função para adicionar um usuário à lista ligada, recebendo diretamente uma struct user
-void add_user_to_list(user new_user) {
+int add_user_to_list(user new_user) {
     // Criando um novo nó para a lista
     sem_wait(user_sem);
-    users_list *new_node = (users_list *)malloc(sizeof(users_list));
-    if (new_node == NULL) {
-        fprintf(stderr, "Failed to allocate memory for new user node\n");
-        return;
-    }
 
-    // Inicializando o novo nó com os dados fornecidos
-    new_node->user = new_user;
-    new_node->next = NULL;
-
-    // Adicionando o novo nó à lista ligada
-    if (shm->mem == NULL) {
-        // A lista está vazia, o novo nó se torna a cabeça da lista
-        shm->mem = new_node;
-    } else {
-        // Encontrar o final da lista e adicionar o novo nó
-        users_list *current = shm->mem;
-        while (current->next != NULL) {
-            current = current->next;
+    for (int i = 0; i < config->max_mobile_users; i++){
+        if (shm->mem[i].id == -999){
+            shm->mem[i] = new_user;
+            shm->mem[i].index = i;
+            sem_post(user_sem);
+            return 0;
         }
-        current->next = new_node;
     }
+
     sem_post(user_sem);
+
+    return -1;
 }
 
-int user_in_list(users_list *list, int id) {
+int user_in_list(int id) {
     sem_wait(user_sem);
-    users_list *current = list;
-    while (current != NULL) {
-        if (current->user.id == id) {
+
+    for (int i = 0; i < config->max_mobile_users; i++){
+        if (shm->mem[i].id == id){
+            
             sem_post(user_sem);
-            return 1;  // ID encontrado na lista
+            return 1;
         }
-        current = current->next;
     }
+
     sem_post(user_sem);
     return 0;  // ID não encontrado na lista
 }
 
-int is_dados_reservar_zero(users_list *list, int id) {
+int is_dados_reservar_zero(int id) {
     sem_wait(user_sem);
-    users_list *current = list;
-    while (current != NULL) {
-        if (current->user.id == id) {
-            if (current->user.dados_reservar == -1){
+
+    for (int i = 0; i < config->max_mobile_users; i++){
+        if (shm->mem[i].id == id){
+            if (shm->mem[i].dados_reservar == -1){
                 sem_post(user_sem);
                 return 1;
             } else {
                 sem_post(user_sem);
                 return 0;
             }
-
         }
-        current = current->next;
     }
+
     sem_post(user_sem);
     return 0;  // Retorna 0 se o ID não for encontrado
 }
 
-void add_to_dados_reservar(users_list *list, int id, int add_value) {
+void add_to_dados_reservar(int id, int add_value) {
     sem_wait(user_sem);
-    users_list *current = list;
-    while (current != NULL) {
-        if (current->user.id == id) {
-            current->user.dados_reservar = add_value;  // Adiciona o valor a "dados_reservar"
+
+    for (int i = 0; i <config->max_mobile_users; i++){
+        if (shm->mem[i].id == id){
+            shm->mem[i].dados_reservar = add_value;
             sem_post(user_sem);
-            return;  // Retorna após adicionar o valor
+            return;
         }
-        current = current->next;
     }
+
     sem_post(user_sem);
 }
 
-int update_plafond(shared_m *shared_data, int user_id) {
+int update_plafond(int id) {
     sem_wait(user_sem);
-    users_list *current = shared_data->mem;  // Ponteiro para a cabeça da lista
-    while (current != NULL) {
-        if (current->user.id == user_id) {  // Verifica se é o usuário correto
-            if (current->user.current_plafond >= current->user.dados_reservar) {
-                current->user.current_plafond -= current->user.dados_reservar;  // Subtrai dados_reservar
+
+    for (int i = 0; i < config->max_mobile_users; i++){
+        if (shm->mem[i].id == id){
+            if (shm->mem[i].current_plafond >= shm->mem[i].dados_reservar){
+                shm->mem[i].current_plafond -= shm->mem->dados_reservar;
                 sem_post(user_sem);
                 return 0;
             } else {
-                current->user.current_plafond = 0;
+                shm->mem[i].current_plafond = 0;
                 sem_post(user_sem);
                 return 1;
             }
         }
-        current = current->next;  // Move para o próximo elemento na lista
     }
+
     sem_post(user_sem);
     return -1;
 }
@@ -312,18 +312,15 @@ int update_plafond(shared_m *shared_data, int user_id) {
 // Print user list
 void print_user_list() {
     sem_wait(user_sem);
-    users_list *current = shm->mem;
-    sem_post(user_sem);
-    current = current->next;
-    printf("\nUsers in the list:\n");
-    while (current != NULL) {
-        printf("ID: %d, Plafond: %d, Actual Plafond %d, Reserved Data: %d\n",
-               current->user.id, current->user.initial_plafond, current->user.current_plafond, current->user.dados_reservar);
-                current = current->next;
+
+    for (int i = 0; i < config->max_mobile_users; i++){
+        if ((shm->mem[i].id != -999)){
+            printf("ID %d, Inital Plafond: %d, Actual Plafond %d, Reserved Data: %d, Index %d\n", shm->mem[i].id, shm->mem[i].initial_plafond, shm->mem[i].current_plafond, shm->mem[i].dados_reservar, shm->mem[i].index);
+        }
     }
 
     printf("\n");
-
+    sem_post(user_sem);
 }
 
 // ============= PROCESSES AND THREADS =============
@@ -331,56 +328,66 @@ void print_user_list() {
 // Monitor engine process function
 void monitor_engine(){
 
-    // recebecer cond signal
-
     while (running){
 
+        //pthread_mutex_lock(&shm->monitor_mutex);
+        while(monitor_variable == 0){
+
+            //pthread_cond_wait(&shm->monitor_cond, &shm->monitor_mutex);
+        }
+
+
         sem_wait(user_sem);
-        users_list *current = shm->mem;
-        current = current->next;
-        sem_post(user_sem);
-
-        while(current != NULL) {
+        for (int i = 0; i < config->max_mobile_users; i++){
+            if (shm->mem[i].id == -999) continue;
             char log[124];
+            //printf("id a confirmar %d\n", shm->mem[i].id);
             queue_msg msg_queue;
-            msg_queue.priority = 1;
 
-            if ((current->user.initial_plafond * 0.2 == current->user.current_plafond) || 
-                ((current->user.initial_plafond * 0.1 > current->user.current_plafond) &&
-                (current->user.initial_plafond * 0.2 < current->user.current_plafond)) ){
-                sprintf(log, "ALERT 80%% (USER ID = %d) TRIGGERED", current->user.id);
-                msg_queue.id = current->user.id;
+            if (shm->mem[i].current_plafond == 0) {
+                sprintf(log, "ALERT 100%% (USER ID = %d) TRIGGERED", shm->mem[i].id);
+
+                msg_queue.priority = shm->mem[i].id;
+                strcpy(msg_queue.message, log);
+                write_log(log);
+                
+                msgsnd(mq_id, &msg_queue, sizeof(msg_queue) - sizeof(long), 0);
+                continue;
+
+            } else if ((shm->mem[i].initial_plafond * 0.1 == shm->mem[i].current_plafond)) 
+            //|| 
+            //        ((shm->mem[i].current_plafond > 0) && (shm->mem[i].current_plafond < shm->mem[i].initial_plafond * 0.1))) 
+            {
+
+                sprintf(log, "ALERT 90%% (USER ID = %d) TRIGGERED", shm->mem[i].id);
+                msg_queue.priority = shm->mem[i].id;
                 strcpy(msg_queue.message, log);
                 write_log(log);
 
                 msgsnd(mq_id, &msg_queue, sizeof(msg_queue) - sizeof(long), 0);
-
-            } else if ((current->user.initial_plafond * 0.1 == current->user.current_plafond) && 
-                    (current->user.current_plafond > 0)) {
-                printf("entrou\n");
-                sprintf(log, "ALERT 90%% (USER ID = %d) TRIGGERED", current->user.id);
-                msg_queue.id = current->user.id;
-                strcpy(msg_queue.message, log);
-                write_log(log);
-
-                msgsnd(mq_id, &msg_queue, sizeof(msg_queue) - sizeof(long), 0);
+                continue;
                
-            } else if (current->user.current_plafond == 0) {
-                printf("entrou\n");
-                sprintf(log, "ALERT 100%% (USER ID = %d) TRIGGERED", current->user.id);
-                msg_queue.id = current->user.id;
+            } else if ((shm->mem[i].initial_plafond * 0.2 ==shm->mem[i].current_plafond))
+                //((shm->mem[i].initial_plafond * 0.1 > shm->mem[i].current_plafond) &&
+                //(shm->mem[i].initial_plafond * 0.2 < shm->mem[i].current_plafond)) )
+                {
+
+                sprintf(log, "ALERT 80%% (USER ID = %d) TRIGGERED", shm->mem[i].id);
+                msg_queue.priority = shm->mem[i].id;
                 strcpy(msg_queue.message, log);
                 write_log(log);
 
                 msgsnd(mq_id, &msg_queue, sizeof(msg_queue) - sizeof(long), 0);
+                continue;
 
             }
-
-            current = current->next;
             memset(log, 0, sizeof(log));
         }
-    }
 
+        monitor_variable = 0;
+        sem_post(user_sem);
+        //pthread_mutex_unlock(&shm->monitor_mutex);
+    }
 }
 
 // Receiver funcion
@@ -440,6 +447,7 @@ void *receiver(void *arg){
                     if (strcmp(token, "VIDEO") == 0) { // GO TO VIDEO QUEUE
 
                         enqueue(queue_video, user_buffer, 0);
+                        pthread_cond_signal(&sender_cond);
                         #ifdef DEBUG
                         printf("VIDEO USER BUFFER %s\n", user_buffer); 
                         #endif
@@ -447,6 +455,7 @@ void *receiver(void *arg){
                     } else { // GO TO OTHER QUEUE
 
                         enqueue(queue_other, user_buffer, 1);
+                        pthread_cond_signal(&sender_cond);
                         #ifdef DEBUG
                         printf("OTHER USER BUFFER %s\n", user_buffer); 
                         #endif
@@ -456,6 +465,7 @@ void *receiver(void *arg){
                 } else { // GO TO OTHER QUEUE
 
                     enqueue(queue_other, user_buffer, 1);
+                    pthread_cond_signal(&sender_cond);
 
                     #ifdef DEBUG
                     printf("FIRST USER BUFFER %s\n", user_buffer); 
@@ -464,8 +474,8 @@ void *receiver(void *arg){
                 }
 
                 #ifdef DEBUG
-                printf("VIDEO QUEUE SIZE %d\n", queue_size(queue_video));
-                printf("OTHER QUEUE SIZE %d\n", queue_size(queue_other));
+                printf("VIDEO QUEUE SIZE %d\n", queue_size(queue_video, 0));
+                printf("OTHER QUEUE SIZE %d\n", queue_size(queue_other, 1));
                 #endif
                 memset(buffer, 0 ,sizeof(buffer));
                 FD_CLR(fd_user_pipe, &read_set); 
@@ -506,6 +516,12 @@ void *sender(void *arg){
     }
     while (running){
 
+        pthread_mutex_lock(&video_mutex);
+        while (queue_size(queue_video, 0) == 0 && (queue_size(queue_other, 1) == 0)){
+            pthread_cond_wait(&sender_cond, &video_mutex);
+        }
+        pthread_mutex_unlock(&video_mutex);
+
         if (!(isEmpty(queue_video, 0))){
             while(!isEmpty(queue_video, 0)){
                 char *msg_video = dequeue(queue_video, 0);
@@ -514,17 +530,16 @@ void *sender(void *arg){
                 printf("SENDER VIDEO: %s\n", msg_video);
                 #endif
 
-                int i = 0;
-                while(i != config->auth_servers){
+                for (int i = 0; i < config->auth_servers; i++){
 
-                    if (check_authorization_free(shm, i)){
+                    if (check_authorization_free(i)){
 
                         char aux[TAM];
                         strcpy(aux, msg_video);
 
                         char log_msg[TAM];
                         sprintf(log_msg, "SENDER: VIDEO AUTHORIZATION REQUEST (ID = %s) SENT FOR PROCESSING ON AUTHORIZATION_ENGINE %d", strtok(aux, "#") , i + 1);
-                        ssize_t bytes_written = write(pipes[0][1], msg_video, strlen(msg_video) + 1);
+                        ssize_t bytes_written = write(pipes[i][1], msg_video, strlen(msg_video) + 1);
                         if (bytes_written < 0){
                             perror("ERROR WRITING");
                         } else {
@@ -532,8 +547,6 @@ void *sender(void *arg){
                             break;
                         }
                     } 
-
-                    i++;  
                 }  
             }
         } else {
@@ -544,18 +557,17 @@ void *sender(void *arg){
                     #ifdef DEBUG
                     printf("SENDER OTHER: %s\n", msg_other);
                     #endif
-                    int i = 0;
-                    while (i != config->auth_servers){
 
-                        if (check_authorization_free(shm, i)){
+                    for (int i = 0; i < config->auth_servers; i++){
 
+                        if (check_authorization_free(i)){
                             char aux[TAM];
                             strcpy(aux, msg_other);
 
                             char log_msg[TAM];
                             sprintf(log_msg, "SENDER: OTHER AUTHORIZATION REQUEST (ID = %s) SENT FOR PROCESSING ON AUTHORIZATION_ENGINE %d", strtok(aux,"#"), i + 1);
 
-                            ssize_t bytes_written = write(pipes[0][1], msg_other, strlen(msg_other) + 1);
+                            ssize_t bytes_written = write(pipes[i][1], msg_other, strlen(msg_other) + 1);
                             if (bytes_written < 0){
                                 perror("ERROR WRITING");
                             } else {
@@ -564,8 +576,6 @@ void *sender(void *arg){
                             }
 
                         }
-
-                        i++;
                     }
                 }  
             }
@@ -587,15 +597,15 @@ void authorization_engine(int id, int (*pipes)[2]){
     while(running){
 
         time_t start, end;
-        time(&start);
-        
+
         char msg[1024];
         ssize_t bytes_read = read(pipes[id][0], msg, sizeof(msg));
 
         if (bytes_read > 0){
-
-            printf("AUTHORIZATION ENGINE %d MSG: %s\n",id + 1 ,msg);
+            time(&start);
             
+            printf("AUTHORIZATION ENGINE %d MSG: %s\n",id + 1 ,msg);
+
             user aux;
 
             // Copy the original string
@@ -604,9 +614,6 @@ void authorization_engine(int id, int (*pipes)[2]){
             buffer[sizeof(buffer) - 1] = '\0';              
 
             char *token = strtok(buffer, "#");   //Token to get the values
-            if(token == NULL){
-                perror("TOKEN INVALIDO");
-            }
 
             if (atoi(token) == 1){
                 printf("MENSAGEM BACKOFFICE %s\n", msg);
@@ -615,8 +622,7 @@ void authorization_engine(int id, int (*pipes)[2]){
 
                 aux.id = atoi(token);
 
-
-                if (user_in_list(shm->mem, aux.id) == 0){ // SE AINDA NÃO TIVER NA LISTA
+                if (user_in_list(aux.id) == 0){ // SE AINDA NÃO TIVER NA LISTA
                     token = strtok(NULL, "#");                
                     int valor = atoi(token);
                     if (valor != 0){
@@ -626,20 +632,27 @@ void authorization_engine(int id, int (*pipes)[2]){
 
                         add_user_to_list(aux);
                     }
-                } else if (user_in_list(shm->mem, aux.id) == 1) { //SE JA TIVER NA LISTA
-                    sem_wait(autho_free);
-                    if (is_dados_reservar_zero(shm->mem, aux.id) == 1){ // if aux.dados_reserver == -1
+                } else if (user_in_list(aux.id) == 1) { //SE JA TIVER NA LISTA
+
+                    if (is_dados_reservar_zero(aux.id) == 1){ // if aux.dados_reserver == -1
                         token = strtok(NULL, "#");
                         if ((strcmp(token, "VIDEO") == 0) || (strcmp(token, "SOCIAL") == 0) || (strcmp(token, "MUSIC") == 0)){
                             token = strtok(NULL, "#");
                             // adiciona os valores que faltava à struct do user para 
-                            add_to_dados_reservar(shm->mem, aux.id, atoi(token));
+                            add_to_dados_reservar(aux.id, atoi(token));
 
                             // cond signal
                         }
                     }
 
-                    int plafond = update_plafond(shm, aux.id);
+                    int plafond = update_plafond(aux.id);
+
+                    //pthread_mutex_lock(&shm->monitor_mutex);
+                    monitor_variable = 1;
+                    //pthread_mutex_unlock(&shm->monitor_mutex);
+                    
+                    //pthread_cond_signal(&shm->monitor_cond);
+
                     if (plafond == 1){ // if all plafond is used
                         char log[124];
                         sprintf(log, "USER PLAFOND IS OVER (ID = %d) ", aux.id);
@@ -648,7 +661,7 @@ void authorization_engine(int id, int (*pipes)[2]){
                         write_log("USER DONT EXIST");
                         exit(1);
                     }
-                    sem_post(autho_free);
+
                 }
             
                 char log[124];
@@ -757,7 +770,13 @@ void cleanup(){
 
     pthread_mutex_destroy(&video_mutex);
     pthread_mutex_destroy(&other_mutex);
-   
+    pthread_cond_destroy(&sender_cond);
+
+    pthread_mutex_destroy(&shm->monitor_mutex);
+    pthread_mutexattr_destroy(&monitor_attrmutex);
+    pthread_cond_destroy(&shm->monitor_cond);
+    pthread_condattr_destroy(&monitor_attrcond);
+
     // Close log file, destroy semaphoro and pipes
     if (sem_close(log_semaphore) == -1) write_log("ERROR CLOSING LOG SEMAPHORE\n");
     if (sem_unlink(LOG_SEM_NAME) == -1 ) write_log ("ERROR UNLINKING LOG SEMAPHORE\n");
@@ -806,7 +825,7 @@ void init_program(){
     } 
 
     //Create de shared memory
-	int shsize= (sizeof(shared_m) + sizeof(users_list)*config->max_mobile_users + sizeof(int) * config->auth_servers + 1); // SM size
+	int shsize= (sizeof(shared_m)  + sizeof(user)*config->max_mobile_users + sizeof(int) * (config->auth_servers + 1)); // SM size
 	shm_id = shmget(IPC_PRIVATE, shsize, IPC_CREAT | IPC_EXCL | 0777);
 	if(shm_id==-1){
 		printf("Erro no shmget\n");
@@ -818,12 +837,30 @@ void init_program(){
 		exit(0);
 	}
 
-    shm->mem = (users_list *)(shm + 1);
-    shm->authorization_free = (int *)(shm->mem + 1);
+    shm->mem = (user *)(shm + 1);
+    shm->authorization_free = (int *)(shm->mem + config->max_mobile_users);
+
+    for (int i = 0; i < config->max_mobile_users; i++){
+        shm->mem[i] = (user){.initial_plafond = -999,
+                            .current_plafond = -999,
+                            .dados_reservar = -999,
+                            .id = -999,
+                            .index = -999}; 
+    }
 
     for (int i = 0; i < config->auth_servers + 1; i++){
         shm->authorization_free[i] = 0;
     }
+
+    pthread_mutexattr_init(&monitor_attrmutex);
+    pthread_mutexattr_setpshared(&monitor_attrmutex, PTHREAD_PROCESS_SHARED);
+
+    pthread_condattr_init(&monitor_attrcond);
+    pthread_condattr_setpshared(&monitor_attrcond, PTHREAD_PROCESS_SHARED);
+
+    pthread_mutex_init(&shm->monitor_mutex, &monitor_attrmutex);
+    pthread_cond_init(&shm->monitor_cond, &monitor_attrcond);
+
 
     // Init Semaphore
     sem_unlink(USER_SEM);

@@ -14,7 +14,7 @@ struct ThreadArgs {
 };
 
 void create_unnamed_pipes(int pipes[][2]);
-int check_authorization_free(shared_m *shm_m, int i);
+int check_authorization_free(int i);
 
 // Queue
 int isEmpty(struct Queue* queue, int i);
@@ -28,11 +28,11 @@ void destroyQueue(struct Queue* queue);
 void enqueue(struct Queue* queue, char *command, int i);
 
 // User´s List
-int is_dados_reservar_zero(users_list *list, int id);
-int user_in_list(users_list *list, int id);
-void add_to_dados_reservar(users_list *list, int id, int add_value);
-int update_plafond(shared_m *shared_data, int user_id);
-void add_user_to_list(user new_user);
+int is_dados_reservar_zero(int id);
+int user_in_list(int id);
+void add_to_dados_reservar(int id, int add_value);
+int update_plafond(int id);
+int add_user_to_list(user new_user);
 void print_user_list();
 
 // Process and Threads

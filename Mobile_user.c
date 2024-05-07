@@ -45,18 +45,22 @@ int verify_data(int argc, char **argv) {
 
 void *video_thread(void *arg){
 
+    //sleep(video_time/2);
+
     char buffer_login[256];
     while (verify_max_request()){
 
         sprintf(buffer_login, "%d#VIDEO#%d", getpid(), user_data.dados_reservar);
         printf("VIDEO QUEUE: %s\n", buffer_login);
 
+        pthread_mutex_lock(&mutex);
         ssize_t bytes_read = write(fd_named_pipe, buffer_login, sizeof(buffer_login));
         if (bytes_read < 0){
+            pthread_mutex_unlock(&mutex);
             perror("ERROR WRITING FOR USER_PIPE\n");
         } else {
 
-            pthread_mutex_lock(&mutex);
+
             max_request--;
             pthread_mutex_unlock(&mutex);
 
@@ -78,19 +82,21 @@ void *music_thread(void *arg){
         sprintf(buffer_login, "%d#MUSIC#%d", getpid(), user_data.dados_reservar);
         printf("MUSIC QUEUE: %s\n", buffer_login);
 
+        pthread_mutex_lock(&mutex);
         ssize_t bytes_read = write(fd_named_pipe, buffer_login, sizeof(buffer_login));
         if (bytes_read < 0){
+            pthread_mutex_unlock(&mutex);
             perror("ERROR WRITING FOR USER_PIPE\n");
         } else {
 
-            pthread_mutex_lock(&mutex);
+
             max_request--;
             pthread_mutex_unlock(&mutex);
-
+            sleep(music_time/2);
             memset(buffer_login, 0, sizeof(buffer_login));
         }       
              
-        sleep(music_time/2);
+
     }
 
     pthread_exit(NULL);
@@ -103,13 +109,14 @@ void *social_thread(void *arg){
         sleep(social_time/2);
         sprintf(buffer_login, "%d#SOCIAL#%d", getpid(), user_data.dados_reservar);
         printf("SOCIAL QUEUE: %s\n", buffer_login);
-
+        pthread_mutex_lock(&mutex);
         ssize_t bytes_read = write(fd_named_pipe, buffer_login, sizeof(buffer_login));
         if (bytes_read < 0){
+            pthread_mutex_unlock(&mutex);
             perror("ERROR WRITING FOR USER_PIPE\n");
         } else {
             
-            pthread_mutex_lock(&mutex);
+
             max_request--;
             pthread_mutex_unlock(&mutex);
 
@@ -123,17 +130,6 @@ void *social_thread(void *arg){
 }
 
 void *message_receiver(void *arg){
-
-    while (1){
-        queue_msg msg;
-
-        msgrcv(mq_id, &msg, sizeof(queue_msg) - sizeof(long), 1, 0);
-
-        if (msg.id == getpid()){
-            printf("%s\n", msg.message);
-        }
-
-    }
 
     pthread_exit(NULL);
 }
@@ -203,6 +199,15 @@ int main(int argc, char* argv[]){
             if (pthread_create(&message_queue, NULL, message_receiver, NULL) != 0){
                 printf("CANNOT CREATE MESSAGE_THREAD\n");
                 exit(1);
+            }
+
+            while (1){
+                queue_msg msg;
+                msgrcv(mq_id, &msg, sizeof(queue_msg) - sizeof(long), 1, 0);
+
+                if (msg.priority == getpid()){
+                    printf("%s\n", msg.message);
+                }
             }
 
             // Closing threads

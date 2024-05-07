@@ -117,6 +117,7 @@ int file_verification(const char* filename) {
     return 0; // Sucesso
 }
 
+/*
 // Função para remover um usuário específico da lista pelo ID
 int remove_user_from_list(int user_id) {
     users_list *current = shm->mem;
@@ -150,4 +151,4 @@ int remove_user_from_list(int user_id) {
 
     return 0; // Sucesso
 }
-
+*/

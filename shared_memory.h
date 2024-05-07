@@ -40,13 +40,13 @@ typedef struct user{
     int current_plafond; 
     int dados_reservar;
     int id;
+    int index;
 }user;
 
 // Message queue struct
 typedef struct {
     long priority;
     char *message;
-    int id;
 } queue_msg;
 
 // User linked list
@@ -57,8 +57,10 @@ typedef struct users_list{
 
 // Shared memory struct
 typedef struct{
-    users_list *mem;
+    user *mem;
     int *authorization_free;
+    pthread_mutex_t monitor_mutex;
+    pthread_cond_t monitor_cond;
 } shared_m;
 
 // Video Queue and Other Queue
