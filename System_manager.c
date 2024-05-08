@@ -402,13 +402,13 @@ void *receiver(void *arg){
     fd_set read_set;
 
     // Named pipes for reading
-    if ((fd_user_pipe = open(USER_PIPE, O_RDONLY )) < 0) {
+    if ((fd_user_pipe = open(USER_PIPE, O_RDONLY | O_NONBLOCK)) < 0) {
         perror("CANNOT OPEN USER_PIPE FOR READING\nS");
         exit(1);
     }
 
-    /*
-    if ((fd_back_pipe = open(BACK_PIPE, O_RDONLY)) < 0) {
+    
+    if ((fd_back_pipe = open(BACK_PIPE, O_RDONLY | O_NONBLOCK)) < 0) {
         perror("CANNOT OPEN BACK_PIPE FOR READING\nS");
         exit(1);
     }
@@ -416,7 +416,7 @@ void *receiver(void *arg){
     
     int max_fd = (fd_user_pipe > fd_back_pipe) ? fd_user_pipe : fd_back_pipe;
     max_fd += 1;  // Adiciona 1 ao maior descritor de arquivo
-    */
+    
     while (running) {
 
         // Open the FD
@@ -424,7 +424,7 @@ void *receiver(void *arg){
         FD_SET(fd_user_pipe, &read_set);
         FD_SET(fd_back_pipe, &read_set);
 
-        if (select(fd_user_pipe + 1, &read_set, NULL, NULL, NULL) > 0){
+        if (select(max_fd, &read_set, NULL, NULL, NULL) > 0){
             if (FD_ISSET(fd_user_pipe, &read_set)){
 
                 char *user_buffer;
@@ -481,7 +481,7 @@ void *receiver(void *arg){
                 FD_CLR(fd_user_pipe, &read_set); 
 
             } 
-            /*if (FD_ISSET(fd_back_pipe, &read_set)){
+            if (FD_ISSET(fd_back_pipe, &read_set)){
 
                 char *back_buffer;
                 back_buffer = read_from_pipe(fd_back_pipe);
@@ -491,11 +491,13 @@ void *receiver(void *arg){
                 #endif
 
                 enqueue(queue_other, back_buffer, 1);
+                pthread_cond_signal(&sender_cond);
+
 
 
                 FD_CLR(fd_back_pipe, &read_set);
             }
-            */
+            
         }
     }
 
@@ -550,34 +552,31 @@ void *sender(void *arg){
                 }  
             }
         } else {
-            if (!isEmpty(queue_other, 1)){
-                while(!isEmpty(queue_other, 1)){
-                    char *msg_other = dequeue(queue_other, 1);
-                    
-                    #ifdef DEBUG
-                    printf("SENDER OTHER: %s\n", msg_other);
-                    #endif
+            if (!isEmpty(queue_other, 1)){   
+                char *msg_other = dequeue(queue_other, 1);
+                
+                #ifdef DEBUG
+                printf("SENDER OTHER: %s\n", msg_other);
+                #endif
 
-                    for (int i = 0; i < config->auth_servers; i++){
+                for (int i = 0; i < config->auth_servers; i++){
 
-                        if (check_authorization_free(i)){
-                            char aux[TAM];
-                            strcpy(aux, msg_other);
+                    if (check_authorization_free(i)){
+                        char aux[TAM];
+                        strcpy(aux, msg_other);
 
-                            char log_msg[TAM];
-                            sprintf(log_msg, "SENDER: OTHER AUTHORIZATION REQUEST (ID = %s) SENT FOR PROCESSING ON AUTHORIZATION_ENGINE %d", strtok(aux,"#"), i + 1);
+                        char log_msg[TAM];
+                        sprintf(log_msg, "SENDER: OTHER AUTHORIZATION REQUEST (ID = %s) SENT FOR PROCESSING ON AUTHORIZATION_ENGINE %d", strtok(aux,"#"), i + 1);
 
-                            ssize_t bytes_written = write(pipes[i][1], msg_other, strlen(msg_other) + 1);
-                            if (bytes_written < 0){
-                                perror("ERROR WRITING");
-                            } else {
-                                write_log(log_msg);
-                                break;
-                            }
-
+                        ssize_t bytes_written = write(pipes[i][1], msg_other, strlen(msg_other) + 1);
+                        if (bytes_written < 0){
+                            perror("ERROR WRITING");
+                        } else {
+                            write_log(log_msg);
+                            break;
                         }
                     }
-                }  
+                }
             }
         }
     }
@@ -617,6 +616,26 @@ void authorization_engine(int id, int (*pipes)[2]){
 
             if (atoi(token) == 1){
                 printf("MENSAGEM BACKOFFICE %s\n", msg);
+                if (strcmp(msg, "1#data_stats") == 0){
+
+                    sem_wait(user_sem);
+
+                    char tam[TAM];
+                    sprintf(tam,"SERVIÇO   TOTAL DATA  AUTH REQS\nVIDEO       %d          %d\nMUSIC       %d          %d\nSOCIAL      %d          %d\n", 
+                    shm->stats.td_video, shm->stats.ar_video, shm->stats.td_music, shm->stats.ar_music, shm->stats.td_social, shm->stats.ar_social);
+                
+                    sem_post(user_sem);
+
+                    queue_msg back_msg;
+                    back_msg.id = 1;
+                    back_msg.priority = 0;
+                    strcpy(back_msg.message,tam);
+
+                    //msgsnd(mq_id, &back_msg, sizeof(back_msg) - sizeof(long), 0);
+                    printf("sended\n");
+                } else {    
+
+                }
 
             } else {
 
@@ -633,9 +652,11 @@ void authorization_engine(int id, int (*pipes)[2]){
                         add_user_to_list(aux);
                     }
                 } else if (user_in_list(aux.id) == 1) { //SE JA TIVER NA LISTA
-
+                    token = strtok(NULL, "#");
+                    char type[TAM];
+                    strcpy(type, token);
                     if (is_dados_reservar_zero(aux.id) == 1){ // if aux.dados_reserver == -1
-                        token = strtok(NULL, "#");
+
                         if ((strcmp(token, "VIDEO") == 0) || (strcmp(token, "SOCIAL") == 0) || (strcmp(token, "MUSIC") == 0)){
                             token = strtok(NULL, "#");
                             // adiciona os valores que faltava à struct do user para 
@@ -645,10 +666,12 @@ void authorization_engine(int id, int (*pipes)[2]){
                         }
                     }
 
+
+
                     int plafond = update_plafond(aux.id);
 
                     //pthread_mutex_lock(&shm->monitor_mutex);
-                    monitor_variable = 1;
+                    //monitor_variable = 1;
                     //pthread_mutex_unlock(&shm->monitor_mutex);
                     
                     //pthread_cond_signal(&shm->monitor_cond);
@@ -767,7 +790,7 @@ void cleanup(){
 
     // Close Message Queue
     if (msgctl(mq_id, IPC_RMID, NULL) == -1) write_log("ERROR CLOSING P MESSAGE QUEUE\n");
-
+/*
     pthread_mutex_destroy(&video_mutex);
     pthread_mutex_destroy(&other_mutex);
     pthread_cond_destroy(&sender_cond);
@@ -776,7 +799,7 @@ void cleanup(){
     pthread_mutexattr_destroy(&monitor_attrmutex);
     pthread_cond_destroy(&shm->monitor_cond);
     pthread_condattr_destroy(&monitor_attrcond);
-
+*/
     // Close log file, destroy semaphoro and pipes
     if (sem_close(log_semaphore) == -1) write_log("ERROR CLOSING LOG SEMAPHORE\n");
     if (sem_unlink(LOG_SEM_NAME) == -1 ) write_log ("ERROR UNLINKING LOG SEMAPHORE\n");
@@ -852,6 +875,14 @@ void init_program(){
         shm->authorization_free[i] = 0;
     }
 
+    shm->stats.ar_music = 0;
+    shm->stats.ar_social = 0;
+    shm->stats.ar_video = 0;
+    shm->stats.td_music = 0;
+    shm->stats.td_video = 0;
+    shm->stats.td_social = 0;
+
+/*
     pthread_mutexattr_init(&monitor_attrmutex);
     pthread_mutexattr_setpshared(&monitor_attrmutex, PTHREAD_PROCESS_SHARED);
 
@@ -860,7 +891,7 @@ void init_program(){
 
     pthread_mutex_init(&shm->monitor_mutex, &monitor_attrmutex);
     pthread_cond_init(&shm->monitor_cond, &monitor_attrcond);
-
+*/
 
     // Init Semaphore
     sem_unlink(USER_SEM);

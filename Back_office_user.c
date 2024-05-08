@@ -1,10 +1,10 @@
 #include "shared_memory.h"
 #include "System_manager.h"
 
-int fd_named_pipe;
-
+int fd_back_pipe;
 
 void handle_signal(int sigint){
+    printf("BACKOFFICE TERMINATED\n");
     exit(0);
 }
 
@@ -22,27 +22,24 @@ int check_command(const char *input) {
 }
 
 int main(){
-
-
-    if ((fd_named_pipe = open(BACK_PIPE, O_WRONLY)) < 0) {
+    
+    if ((fd_back_pipe = open(BACK_PIPE, O_WRONLY)) < 0) {
         perror("CANNOT OPEN PIPE FOR WRITING: ");
         exit(0);
     }
     
-    while (1){
-        //char buffer[256];
+    signal(SIGINT, handle_signal);
 
-        signal(SIGINT, handle_signal);
-        
-        //fgets(buffer, 256, stdin);
-        //buffer[strcspn(buffer, "\n")] = 0;
+        char buffer[256];        
+        fgets(buffer, 256, stdin);
+        buffer[strcspn(buffer, "\n")] = 0;
 
-        //if (check_command(buffer) != 1){ // Verify data
-        //    printf("VALORES ERRADOS\n");
-        //    exit(1);
-        //}
+        if (check_command(buffer) != 1){ // Verify data
+            printf("VALORES ERRADOS\n");
+            exit(1);
+        }
 
-        ssize_t bytes_write = write(fd_named_pipe, "1#data_stats", sizeof("1#data_stats"));
+        ssize_t bytes_write = write(fd_back_pipe, buffer, sizeof(buffer));
         if (bytes_write < 0){
             perror("CANNOT WRITE FOR PIPE\n");
             exit(1);
@@ -50,7 +47,15 @@ int main(){
             printf("SENDED\n");
         }
 
-        //memset(buffer, 0 , sizeof(buffer));
-    }
+        sleep(2);
+
+        queue_msg back_mq;
+        msgrcv(mq_id, &back_mq, sizeof(back_mq) - sizeof(long), 0, 0);
+
+        printf("%s", back_mq.message);
+
+        memset(buffer, 0 , sizeof(buffer));
+
+    
     return 0;
 }

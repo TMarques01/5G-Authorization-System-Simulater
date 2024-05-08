@@ -47,20 +47,23 @@ typedef struct user{
 typedef struct {
     long priority;
     char *message;
+    int id;
 } queue_msg;
 
-// User linked list
-typedef struct users_list{
-	user user;
-	struct users_list * next;
-}users_list;
+
+typedef struct statistic {
+    int td_video, ar_video;
+    int td_music, ar_music;
+    int td_social, ar_social;
+}statistic;
 
 // Shared memory struct
 typedef struct{
     user *mem;
     int *authorization_free;
-    pthread_mutex_t monitor_mutex;
-    pthread_cond_t monitor_cond;
+    statistic stats;
+    //pthread_mutex_t monitor_mutex;
+    //pthread_cond_t monitor_cond;
 } shared_m;
 
 // Video Queue and Other Queue

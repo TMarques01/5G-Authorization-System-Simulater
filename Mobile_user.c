@@ -130,7 +130,15 @@ void *social_thread(void *arg){
 }
 
 void *message_receiver(void *arg){
+    
+    while (1){
+        queue_msg msg;
+        msgrcv(mq_id, &msg, sizeof(queue_msg) - sizeof(long), 0, 0);
 
+        if (msg.id == getpid()){
+            printf("%s\n", msg.message);
+        }
+    }
     pthread_exit(NULL);
 }
 
@@ -199,15 +207,6 @@ int main(int argc, char* argv[]){
             if (pthread_create(&message_queue, NULL, message_receiver, NULL) != 0){
                 printf("CANNOT CREATE MESSAGE_THREAD\n");
                 exit(1);
-            }
-
-            while (1){
-                queue_msg msg;
-                msgrcv(mq_id, &msg, sizeof(queue_msg) - sizeof(long), 1, 0);
-
-                if (msg.priority == getpid()){
-                    printf("%s\n", msg.message);
-                }
             }
 
             // Closing threads
