@@ -2,10 +2,34 @@
 #include "System_manager.h"
 
 int fd_back_pipe;
+int run = 1;
 
 void handle_signal(int sigint){
-    printf("BACKOFFICE TERMINATED\n");
+    run = 0;
+    sleep(1);
+    close(fd_back_pipe);
+    printf("\nBACKOFFICE TERMINATED\n");
+
     exit(0);
+}
+
+void *receive_stats(void *args){
+
+    char *msg_id = (char*)args;
+
+    while(run){
+
+        queue_msg back_mq;
+        if (msgrcv(atoi(msg_id), &back_mq, sizeof(queue_msg) - sizeof(long), 1, 0) == -1){
+            perror("ERROR RECEIVING FROM MQ");
+            exit(1);
+        }
+
+        printf("Statistics\n%s", back_mq.message);
+
+    }
+
+    pthread_exit(NULL);
 }
 
 int check_command(const char *input) {
@@ -22,13 +46,31 @@ int check_command(const char *input) {
 }
 
 int main(){
-    
+
+    char msg_id[64];
     if ((fd_back_pipe = open(BACK_PIPE, O_WRONLY)) < 0) {
         perror("CANNOT OPEN PIPE FOR WRITING: ");
         exit(0);
     }
+
+    FILE *fp = fopen(MSQ_FILE, "r");
+    if (fp == NULL){
+        printf("ERROR OPENING FILE -> MSG_QUEUE_ID\n");
+        exit(1);
+    }
+    fgets(msg_id, 64, fp);
+    fclose(fp);
+
+    pthread_t back_office_stats;
+
+    if (pthread_create(&back_office_stats, NULL, receive_stats,(void*)msg_id) != 0) {
+        printf("CANNOT CREATE BACK_OFFICE_STATS_THREAD\n");
+        exit(1);
+    }
     
     signal(SIGINT, handle_signal);
+
+    while(run){
 
         char buffer[256];        
         fgets(buffer, 256, stdin);
@@ -47,15 +89,12 @@ int main(){
             printf("SENDED\n");
         }
 
-        sleep(2);
-
-        queue_msg back_mq;
-        msgrcv(mq_id, &back_mq, sizeof(back_mq) - sizeof(long), 0, 0);
-
-        printf("%s", back_mq.message);
-
         memset(buffer, 0 , sizeof(buffer));
+    } 
 
-    
-    return 0;
+    // Closing threads
+    if (pthread_join(back_office_stats, NULL) != 0){
+        printf("CANNOT JOIN BACK OFFICE STATS THREAD\n");
+        exit(1);
+    }
 }

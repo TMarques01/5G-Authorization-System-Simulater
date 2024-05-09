@@ -15,9 +15,9 @@ struct ThreadArgs {
 
 void create_unnamed_pipes(int pipes[][2]);
 int check_authorization_free(int i);
+int verify_user_list_full();
 
 // Queue
-int isEmpty(struct Queue* queue, int i);
 struct Queue* createQueue();
 char* dequeue(struct Queue* queue, int i);
 int queue_size(struct Queue* queue, int i);
@@ -31,11 +31,12 @@ void enqueue(struct Queue* queue, char *command, int i);
 int is_dados_reservar_zero(int id);
 int user_in_list(int id);
 void add_to_dados_reservar(int id, int add_value);
-int update_plafond(int id);
+int update_plafond(int id, char *type);
 int add_user_to_list(user new_user);
 void print_user_list();
 
 // Process and Threads
+void authorization_engine(int id, int (*pipes)[2]);
 void monitor_engine();
 void *receiver(void *arg);
 void *sender(void *arg);

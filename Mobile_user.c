@@ -5,13 +5,18 @@
 #include "System_manager.h"
 #include "funcoes.h"
 
-int fd_named_pipe, login = 0, max_request, video_time, music_time, social_time;
+int fd_named_pipe, login = 0, max_request, video_time, music_time, social_time, run = 1;
 user user_data;
 pthread_t video, music, social, message_queue;
 pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 
 void handle_signal(int sigint){
     printf("LOSING MOBILE USER...\n");
+
+    run = 0;
+    sleep(1);
+    pthread_mutex_destroy(&mutex);
+    close(fd_named_pipe);
 
     exit(0);
 }
@@ -27,7 +32,8 @@ int verify_max_request(){
     } else {
         pthread_mutex_unlock(&mutex);
         printf("MAX REQUEST OVERPAST\n");
-        exit(0);
+        run = 0;
+        return 0;
     }
 }
 
@@ -77,7 +83,6 @@ void *music_thread(void *arg){
 
     char buffer_login[256];
     while (verify_max_request()){
-        sleep(music_time/2);
 
         sprintf(buffer_login, "%d#MUSIC#%d", getpid(), user_data.dados_reservar);
         printf("MUSIC QUEUE: %s\n", buffer_login);
@@ -89,10 +94,10 @@ void *music_thread(void *arg){
             perror("ERROR WRITING FOR USER_PIPE\n");
         } else {
 
-
             max_request--;
             pthread_mutex_unlock(&mutex);
-            sleep(music_time/2);
+
+            sleep(music_time);
             memset(buffer_login, 0, sizeof(buffer_login));
         }       
              
@@ -106,7 +111,7 @@ void *social_thread(void *arg){
 
     char buffer_login[256];
     while (verify_max_request()){
-        sleep(social_time/2);
+
         sprintf(buffer_login, "%d#SOCIAL#%d", getpid(), user_data.dados_reservar);
         printf("SOCIAL QUEUE: %s\n", buffer_login);
         pthread_mutex_lock(&mutex);
@@ -120,7 +125,7 @@ void *social_thread(void *arg){
             max_request--;
             pthread_mutex_unlock(&mutex);
 
-            sleep(social_time/2);
+            sleep(social_time);
 
             memset(buffer_login, 0, sizeof(buffer_login));
         }
@@ -131,13 +136,13 @@ void *social_thread(void *arg){
 
 void *message_receiver(void *arg){
     
-    while (1){
-        queue_msg msg;
-        msgrcv(mq_id, &msg, sizeof(queue_msg) - sizeof(long), 0, 0);
+    while (run){
+        //ueue_msg msg;
+        //msgrcv(mq_id, &msg, sizeof(queue_msg) - sizeof(long), 0, 0);
 
-        if (msg.id == getpid()){
-            printf("%s\n", msg.message);
-        }
+        //if (msg.id == getpid()){
+        //    printf("%s\n", msg.message);
+        //}
     }
     pthread_exit(NULL);
 }
@@ -157,6 +162,7 @@ int main(int argc, char* argv[]){
         social_time = atoi(argv[5]);
         user_data.dados_reservar = atoi(argv[6]);
         user_data.id = getpid();
+
     } else {
         printf("WRONG DATA\n");
         exit(0);
@@ -171,20 +177,23 @@ int main(int argc, char* argv[]){
         exit(0);
     }
     
-    while (1){
+    while (run){
 
         signal(SIGINT, handle_signal);
         
         if (login == 0){
+            
             char buffer[256];
             sprintf(buffer, "%d#%d", getpid(), user_data.initial_plafond);
             printf("LOGIN %s\n", buffer);
 
-            write(fd_named_pipe, buffer, sizeof(buffer));
+            ssize_t bytes_read = write(fd_named_pipe, buffer, sizeof(buffer));
+            if (bytes_read < 0){
+                perror("ERROR WRITING FOR PIPE");
+            }
 
             login++;
             memset(buffer, 0 , sizeof(buffer));
-            
 
         } else if (login == 1){
             
@@ -208,8 +217,7 @@ int main(int argc, char* argv[]){
                 printf("CANNOT CREATE MESSAGE_THREAD\n");
                 exit(1);
             }
-
-            // Closing threads
+                // Closing threads
             if (pthread_join(video, NULL) != 0){
                 printf("CANNOT JOIN VIDEO THREAD");
                 exit(1);
@@ -219,7 +227,7 @@ int main(int argc, char* argv[]){
                 printf("CANNOT JOIN MUSIC THREAD");
                 exit(1);
             }
-         
+            
             if (pthread_join(social, NULL) != 0){
                 printf("CANNOT JOIN SOCIAL THREAD");
                 exit(1);
@@ -229,8 +237,8 @@ int main(int argc, char* argv[]){
                 printf("CANNOT JOIN MESSAGE QUEUE THREAD");
                 exit(1);
             }
-
         }
-
     }
+
+    return 0; 
 }

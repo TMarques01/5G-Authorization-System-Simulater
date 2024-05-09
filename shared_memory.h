@@ -25,6 +25,8 @@
 #define USER_PIPE "user_pipe"
 #define BACK_PIPE "back_pipe"
 
+#define MSQ_FILE "msq_file.txt"
+
 typedef struct program_init{
     int max_mobile_users;
     int queue_pos;
@@ -46,11 +48,10 @@ typedef struct user{
 // Message queue struct
 typedef struct {
     long priority;
-    char *message;
-    int id;
+    char message[124];
 } queue_msg;
 
-
+// Statistic struct
 typedef struct statistic {
     int td_video, ar_video;
     int td_music, ar_music;
@@ -62,6 +63,7 @@ typedef struct{
     user *mem;
     int *authorization_free;
     statistic stats;
+
     //pthread_mutex_t monitor_mutex;
     //pthread_cond_t monitor_cond;
 } shared_m;
@@ -76,10 +78,6 @@ typedef struct Queue {
     struct Node* front;
     struct Node* rear;
 }Queue;
-
-// Queue Pointer
-struct Queue* queue_video;
-struct Queue* queue_other;
 
 //======================================
 
@@ -109,6 +107,10 @@ int mq_id;
 sem_t *user_sem;
 sem_t *autho_free;
 sem_t *fifo_full;
+
+// Queue variables
+struct Queue* queue_video;
+struct Queue* queue_other;
 
 int running;
 

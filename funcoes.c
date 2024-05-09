@@ -152,3 +152,6 @@ int remove_user_from_list(int user_id) {
     return 0; // Sucesso
 }
 */
+
+// ============ Queue Functions ============
+
