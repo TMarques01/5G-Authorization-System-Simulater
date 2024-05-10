@@ -5,7 +5,8 @@
 
 #define USER_SEM "user_sem"
 #define AUTH_SEM "authorization_engine_sem"
-#define FIFO_FULL "fifo_full_sem"
+#define STATS_SEM "statistic_sem"
+#define MON_SEM "monitor_sem"
 
 struct ThreadArgs {
   int (*pipes)[2];

@@ -14,9 +14,8 @@ void handle_signal(int sigint){
     printf("LOSING MOBILE USER...\n");
 
     run = 0;
-    sleep(1);
     pthread_mutex_destroy(&mutex);
-    close(fd_named_pipe);
+    //close(fd_named_pipe);
 
     exit(0);
 }
@@ -51,8 +50,6 @@ int verify_data(int argc, char **argv) {
 
 void *video_thread(void *arg){
 
-    //sleep(video_time/2);
-
     char buffer_login[256];
     while (verify_max_request()){
 
@@ -66,7 +63,6 @@ void *video_thread(void *arg){
             perror("ERROR WRITING FOR USER_PIPE\n");
         } else {
 
-
             max_request--;
             pthread_mutex_unlock(&mutex);
 
@@ -75,7 +71,6 @@ void *video_thread(void *arg){
             memset(buffer_login, 0, sizeof(buffer_login));
         }
     }
-
     pthread_exit(NULL);
 }
 
@@ -100,10 +95,7 @@ void *music_thread(void *arg){
             sleep(music_time);
             memset(buffer_login, 0, sizeof(buffer_login));
         }       
-             
-
     }
-
     pthread_exit(NULL);
 }
 
@@ -114,14 +106,15 @@ void *social_thread(void *arg){
 
         sprintf(buffer_login, "%d#SOCIAL#%d", getpid(), user_data.dados_reservar);
         printf("SOCIAL QUEUE: %s\n", buffer_login);
+
         pthread_mutex_lock(&mutex);
         ssize_t bytes_read = write(fd_named_pipe, buffer_login, sizeof(buffer_login));
         if (bytes_read < 0){
             pthread_mutex_unlock(&mutex);
             perror("ERROR WRITING FOR USER_PIPE\n");
+
         } else {
             
-
             max_request--;
             pthread_mutex_unlock(&mutex);
 
@@ -135,15 +128,29 @@ void *social_thread(void *arg){
 }
 
 void *message_receiver(void *arg){
-    
-    while (run){
-        //ueue_msg msg;
-        //msgrcv(mq_id, &msg, sizeof(queue_msg) - sizeof(long), 0, 0);
 
-        //if (msg.id == getpid()){
-        //    printf("%s\n", msg.message);
-        //}
+    char msg_id[64];
+
+    FILE *fp = fopen(MSQ_FILE, "r");
+    if (fp == NULL){
+        printf("ERROR OPENING FILE -> MSG_QUEUE_ID\n");
+        exit(1);
     }
+    fgets(msg_id, 64, fp);
+    fclose(fp);
+
+    while (run){
+        queue_msg msg;
+
+        if (msgrcv(atoi(msg_id), &msg, sizeof(queue_msg) - sizeof(long), getpid(), 0) == -1){
+            perror("ERROR RECEIVING FROM MQ");
+            exit(1);
+        }
+
+        printf("%s\n", msg.message);
+        
+    }
+
     pthread_exit(NULL);
 }
 
@@ -165,16 +172,14 @@ int main(int argc, char* argv[]){
 
     } else {
         printf("WRONG DATA\n");
-        exit(0);
+        exit(1);
     }
 
-    printf("YOUR ID: %d\n", getpid());
-
-    signal(SIGINT, handle_signal);  
+    signal(SIGINT, handle_signal);
 
     if ((fd_named_pipe = open(USER_PIPE, O_WRONLY)) < 0) {
         perror("CANNOT OPEN PIPE FOR WRITING: ");
-        exit(0);
+        exit(1);
     }
     
     while (run){
@@ -239,6 +244,5 @@ int main(int argc, char* argv[]){
             }
         }
     }
-
     return 0; 
 }

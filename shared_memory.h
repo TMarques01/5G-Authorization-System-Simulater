@@ -106,7 +106,8 @@ int mq_id;
 //Semaphore
 sem_t *user_sem;
 sem_t *autho_free;
-sem_t *fifo_full;
+sem_t *stats_sem;
+sem_t *monitor_sem;
 
 // Queue variables
 struct Queue* queue_video;

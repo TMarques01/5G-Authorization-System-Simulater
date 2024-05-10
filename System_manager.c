@@ -34,16 +34,16 @@ void create_unnamed_pipes(int pipes[][2]){
 // Verify wich AE is free
 int check_authorization_free(int i){
 
-    sem_wait(user_sem);
+    sem_wait(autho_free);
     if (shm->authorization_free[i] == 0){
         shm->authorization_free[i] = 1;
         #ifdef ARRAY
         for (int i = 0; i < config->auth_servers + 1; i++) printf("AUTHORIZATION_FREE[%d]: %d \n", i + 1, shm->authorization_free[i]);
         #endif
-        sem_post(user_sem);
+        sem_post(autho_free);
         return 1;
     } else {
-        sem_post(user_sem);
+        sem_post(autho_free);
         return 0;
     }
 }
@@ -317,6 +317,7 @@ int update_plafond(int id, char *type) {
             if (shm->mem[i].current_plafond >= shm->mem[i].dados_reservar){
                 shm->mem[i].current_plafond -= shm->mem[i].dados_reservar;
 
+                sem_wait(stats_sem);
                 if (strcmp(type, "VIDEO") == 0){
                     shm->stats.td_video += shm->mem[i].dados_reservar;
                 } else if (strcmp(type, "SOCIAL") == 0){
@@ -324,6 +325,7 @@ int update_plafond(int id, char *type) {
                 } else {
                     shm->stats.td_music += shm->mem[i].dados_reservar;
                 }
+                sem_post(stats_sem);
 
                 sem_post(user_sem);
                 return 0;
@@ -355,6 +357,7 @@ void print_user_list() {
 
 // ============= PROCESSES AND THREADS =============
 
+// Thread that send statistic to back office
 void *back_stats(void *args){
 
     while (running){
@@ -381,33 +384,19 @@ void *back_stats(void *args){
     pthread_exit(NULL);
 }
 
-// Monitor engine process function
-void monitor_engine(){
-
-    pthread_t back_office_stats;
-
-    if (pthread_create(&back_office_stats, NULL, back_stats, NULL ) != 0) {
-        write_log("CANNOT CREATE BACK_OFFICE_STATS_THREAD");
-        exit(1);
-    }
-
-    // Closing threads
-    if (pthread_join(back_office_stats, NULL) != 0){
-        printf("CANNOT JOIN BACK OFFICE STATS THREAD");
-        exit(1);
-    }
+// Sende warning 
+void *monitor_warnings(void *args){
 
     while (running){
-
-        //pthread_mutex_lock(&shm->monitor_mutex);
-        while(monitor_variable == 0){
-
-            //pthread_cond_wait(&shm->monitor_cond, &shm->monitor_mutex);
-        }
+        
+        sem_wait(monitor_sem);
 
         sem_wait(user_sem);
+
         for (int i = 0; i < config->max_mobile_users; i++){
+
             if (shm->mem[i].id == -999) continue;
+
             char log[124];
 
             queue_msg msg_queue;
@@ -420,12 +409,8 @@ void monitor_engine(){
                 write_log(log);
                 
                 msgsnd(mq_id, &msg_queue, sizeof(queue_msg) - sizeof(long), 0);
-                continue;
 
-            } else if ((shm->mem[i].initial_plafond * 0.1 == shm->mem[i].current_plafond)) 
-            //|| 
-            //        ((shm->mem[i].current_plafond > 0) && (shm->mem[i].current_plafond < shm->mem[i].initial_plafond * 0.1))) 
-            {
+            } else if ((shm->mem[i].initial_plafond * 0.1 == shm->mem[i].current_plafond)) {
 
                 sprintf(log, "ALERT 90%% (USER ID = %d) TRIGGERED", shm->mem[i].id);
                 msg_queue.priority = shm->mem[i].id;
@@ -433,12 +418,8 @@ void monitor_engine(){
                 write_log(log);
 
                 msgsnd(mq_id, &msg_queue, sizeof(msg_queue) - sizeof(long), 0);
-                continue;
-               
-            } else if ((shm->mem[i].initial_plafond * 0.2 ==shm->mem[i].current_plafond))
-                //((shm->mem[i].initial_plafond * 0.1 > shm->mem[i].current_plafond) &&
-                //(shm->mem[i].initial_plafond * 0.2 < shm->mem[i].current_plafond)) )
-                {
+            
+            } else if ((shm->mem[i].initial_plafond * 0.2 ==shm->mem[i].current_plafond)) {
 
                 sprintf(log, "ALERT 80%% (USER ID = %d) TRIGGERED", shm->mem[i].id);
                 msg_queue.priority = shm->mem[i].id;
@@ -446,16 +427,44 @@ void monitor_engine(){
                 write_log(log);
 
                 msgsnd(mq_id, &msg_queue, sizeof(msg_queue) - sizeof(long), 0);
-                continue;
 
             }
+
             memset(log, 0, sizeof(log));
         }
 
-        monitor_variable = 0;
         sem_post(user_sem);
         //pthread_mutex_unlock(&shm->monitor_mutex);
     }
+
+    pthread_exit(NULL);
+}
+
+// Monitor engine process function
+void monitor_engine(){
+
+    pthread_t back_office_stats, monitor_warning;
+
+    if (pthread_create(&back_office_stats, NULL, back_stats, NULL ) != 0) {
+        write_log("CANNOT CREATE BACK_OFFICE_STATS_THREAD");
+        exit(1);
+    }
+
+    if (pthread_create(&monitor_warning, NULL, monitor_warnings, NULL ) != 0) {
+        write_log("CANNOT CREATE BACK_OFFICE_STATS_THREAD");
+        exit(1);
+    }
+
+    // Closing threads
+    if (pthread_join(back_office_stats, NULL) != 0){
+        printf("CANNOT JOIN BACK OFFICE STATS THREAD");
+        exit(1);
+    }
+
+    if (pthread_join(monitor_warning, NULL) != 0){
+        printf("CANNOT JOIN MONITOR WARING STATS THREAD");
+        exit(1);
+    }   
 }
 
 // Receiver funcion
@@ -474,16 +483,14 @@ void *receiver(void *arg){
         perror("CANNOT OPEN USER_PIPE FOR READING\nS");
         exit(1);
     }
-
     
     if ((fd_back_pipe = open(BACK_PIPE, O_RDONLY | O_NONBLOCK)) < 0) {
         perror("CANNOT OPEN BACK_PIPE FOR READING\nS");
         exit(1);
     }
     
-
     int max_fd = (fd_user_pipe > fd_back_pipe) ? fd_user_pipe : fd_back_pipe;
-    max_fd += 1;  // Adiciona 1 ao maior descritor de arquivo
+    max_fd += 1;
     
     while (running) {
 
@@ -553,6 +560,7 @@ void *receiver(void *arg){
 
                 char *back_buffer;
                 back_buffer = read_from_pipe(fd_back_pipe);
+
                 if (back_buffer != NULL){   
 
                     #ifdef DEBUG
@@ -585,9 +593,7 @@ void *sender(void *arg){
     struct Queue* queue_video = args->queue_video;
     struct Queue* queue_other = args->queue_other;
 
-    for (int i = 0; i < config->auth_servers; i++){
-        close(pipes[i][0]);
-    }
+    for (int i = 0; i < config->auth_servers; i++) close(pipes[i][0]);
 
     while (running){
         
@@ -597,7 +603,6 @@ void *sender(void *arg){
             pthread_cond_wait(&sender_cond, &video_mutex);
         }
         pthread_mutex_unlock(&video_mutex);
-
 
         // Verify if the queue is full
         if ((queue_size(queue_video, 0) == config->queue_pos || queue_size(queue_other, 1) == config->queue_pos) && flag == 0){
@@ -626,8 +631,8 @@ void *sender(void *arg){
             write_log("CREATING EXTRA AUTHORIZATION ENGINE");
         }
 
-
-        if (n_auth_servers == config->auth_servers + 1){
+        // verify if the queue is 50% size and remove the extra AE
+        if (n_auth_servers == config->auth_servers + 1){ 
             if (queue_size(queue_video, 0) == (config->queue_pos/2) && flag == 2){
 
                 close(pipes[config->auth_servers][1]);
@@ -643,7 +648,6 @@ void *sender(void *arg){
                 n_auth_servers--;
             }
         }
-
 
         if (!(isEmpty(queue_video, 0))){
             while(!isEmpty(queue_video, 0)){
@@ -668,9 +672,9 @@ void *sender(void *arg){
                             perror("ERROR WRITING");
                         } else {
                             
-                            sem_wait(user_sem);
+                            sem_wait(stats_sem);
                             shm->stats.ar_video++;
-                            sem_post(user_sem);
+                            sem_post(stats_sem);
 
                             write_log(log_msg);
                             break;
@@ -702,13 +706,15 @@ void *sender(void *arg){
                         } else {
 
                             if (strcmp(type, "SOCIAL") == 0){
-                                sem_wait(user_sem);
+
+                                sem_wait(stats_sem);
                                 shm->stats.ar_social++;
-                                sem_post(user_sem);
+                                sem_post(stats_sem);
                             } else if (strcmp(type, "MUSIC") == 0){
-                                sem_wait(user_sem);
+
+                                sem_wait(stats_sem);
                                 shm->stats.ar_music++;
-                                sem_post(user_sem);                    
+                                sem_post(stats_sem);                    
                             }
 
                             write_log(log_msg);
@@ -758,9 +764,9 @@ void authorization_engine(int id, int (*pipes)[2]){
 
             if (atoi(token) == 1){ // MESSAGE FROM BACK OFFICE
 
-                //#ifdef DEBUG
+                #ifdef DEBUG
                 printf("MENSAGEM BACKOFFICE %s\n", msg);                
-                //#endif
+                #endif
 
                 if (strcmp(msg, "1#data_stats") == 0){
 
@@ -833,10 +839,7 @@ void authorization_engine(int id, int (*pipes)[2]){
 
                         int plafond = update_plafond(aux.id, type);
 
-                        //pthread_mutex_lock(&shm->monitor_mutex);
-                        //monitor_variable = 1;
-                        //pthread_mutex_unlock(&shm->monitor_mutex);
-                        //pthread_cond_signal(&shm->monitor_cond);
+                        sem_post(monitor_sem);
 
                         if (plafond == 1){ // if all plafond is used
                             char log[124];
@@ -863,6 +866,7 @@ void authorization_engine(int id, int (*pipes)[2]){
                     long prty = aux.id;
                     msg.priority = prty;
                     strcpy(msg.message, "USER LIST IS FULL!");
+                    write_log("USER LIST IS FULL!");
 
                     if (msgsnd(mq_id, &msg, sizeof(queue_msg) - sizeof(long), 0) == -1){
                         write_log("CANNOT WRITE FOR MESSAGE QUEUE");
@@ -877,9 +881,9 @@ void authorization_engine(int id, int (*pipes)[2]){
                 sleep((config->auth_proc_time - elapsed) / 1000);
             }
 
-            sem_wait(user_sem);
+            sem_wait(autho_free);
             shm->authorization_free[id] = 0;
-            sem_post(user_sem);
+            sem_post(autho_free);
 
         }
         memset(msg, 0, sizeof(msg));
@@ -928,7 +932,8 @@ void authorization_request_manager(){
         printf("CANNOT CREATE SENDER_THREAD\n");
         exit(1);
     }
-
+    
+    // Waiting for AE processes
     for (int i = 0; i < config->auth_servers; i++) wait(NULL);
 
     // Closing threads
@@ -969,6 +974,7 @@ void cleanup(){
     pthread_mutex_destroy(&video_mutex);
     pthread_mutex_destroy(&other_mutex);
     pthread_cond_destroy(&sender_cond);
+
 /*
     pthread_mutex_destroy(&shm->monitor_mutex);
     pthread_mutexattr_destroy(&monitor_attrmutex);
@@ -983,6 +989,10 @@ void cleanup(){
     if (sem_unlink(USER_SEM) == -1 ) write_log ("ERROR UNLINKING USER SEMAPHORE\n");
     if (sem_close(autho_free) == -1) write_log("ERROR CLOSING AUTHORIZATION ENGINE SEMAPHORE\n");
     if (sem_unlink(AUTH_SEM) == -1 ) write_log ("ERROR UNLINKING AUTHORIZATION ENGINE SEMAPHORE\n");
+    if (sem_close(stats_sem) == -1) write_log("ERROR CLOSING STATS SEMAPHORE\n");
+    if (sem_unlink(STATS_SEM) == -1 ) write_log ("ERROR UNLINKING STATS SEMAPHORE\n");
+    if (sem_close(monitor_sem) == -1) write_log("ERROR CLOSING MONITOR SEMAPHORE\n");
+    if (sem_unlink(MON_SEM) == -1 ) write_log ("ERROR UNLINKING MONITOR SEMAPHORE\n");
     if (fclose(log_file) == EOF) write_log("ERROR CLOSIGN LOG FILE\n");
     if (unlink(USER_PIPE) == -1)write_log("ERROR UNLINKING PIPE USER_PIPE\n");
     if (unlink(BACK_PIPE) == -1)write_log("ERROR UNLINKING PIPE BACK_PIPE\n");
@@ -1055,9 +1065,7 @@ void init_program(){
                             .index = -999}; 
     }
 
-    for (int i = 0; i < config->auth_servers + 1; i++){
-        shm->authorization_free[i] = 0;
-    }
+    for (int i = 0; i < config->auth_servers + 1; i++) shm->authorization_free[i] = 0;
 
     shm->stats.ar_music = 0;
     shm->stats.ar_social = 0;
@@ -1092,9 +1100,16 @@ void init_program(){
         exit(1);
     }
 
-    sem_unlink(FIFO_FULL);
-    fifo_full = sem_open(FIFO_FULL, O_CREAT | O_EXCL, 0777, 0);
-    if (fifo_full == SEM_FAILED) {
+    sem_unlink(STATS_SEM);
+    stats_sem = sem_open(STATS_SEM, O_CREAT | O_EXCL, 0777, 1);
+    if (stats_sem == SEM_FAILED) {
+        perror("sem_open");
+        exit(1);
+    }
+
+    sem_unlink(MON_SEM);
+    monitor_sem = sem_open(MON_SEM, O_CREAT | O_EXCL, 0777, 0);
+    if (monitor_sem == SEM_FAILED) {
         perror("sem_open");
         exit(1);
     }    
@@ -1116,7 +1131,6 @@ void init_program(){
     // Create monitor_engine_process
     monitor_engine_process = fork();
     if (monitor_engine_process == 0){
-
         // Writing for log file
         write_log("PROCESS MONITOR ENGINE CREATED");
         monitor_engine();
@@ -1149,5 +1163,6 @@ int main(int argc, char* argv[]){
     // Signal to end program
     signal(SIGINT, cleanup);
 
-    while(running){}
+    while(running) {};
+    //wait(NULL);
 }
