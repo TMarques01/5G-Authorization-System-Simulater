@@ -294,7 +294,7 @@ void *monitor_warnings(void *args){
                 strcpy(msg_queue.message, log);
                 write_log(log);
 
-                msgsnd(mq_id, &msg_queue, sizeof(msg_queue) - sizeof(long), 0);
+				if (msgsnd(mq_id, &msg_queue, sizeof(msg_queue) - sizeof(long), 0) == -1) write_log("ERROR WRITING FOR MESSAGE QUEUE");
             
             } else if ((shm->mem[i].initial_plafond * 0.2 ==shm->mem[i].current_plafond)) {
 
@@ -303,8 +303,8 @@ void *monitor_warnings(void *args){
                 strcpy(msg_queue.message, log);
                 write_log(log);
 
-                msgsnd(mq_id, &msg_queue, sizeof(msg_queue) - sizeof(long), 0);
-
+				if (msgsnd(mq_id, &msg_queue, sizeof(msg_queue) - sizeof(long), 0) == -1) write_log("ERROR WRITING FOR MESSAGE QUEUE");
+       
             }
 
             memset(log, 0, sizeof(log));
