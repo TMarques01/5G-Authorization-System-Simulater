@@ -1,7 +1,6 @@
 CC = gcc
 FLAGS = -Wall -pthread -g
 PROGS = 5g_auth_platform Mobile_user Back_office_user
-OBJS = System_manager.o Mobile_user.o Back_office_user.o funcoes.o
 
 all: ${PROGS}
 

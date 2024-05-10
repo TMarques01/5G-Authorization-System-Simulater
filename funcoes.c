@@ -152,3 +152,123 @@ int remove_user_from_list(int user_id) {
     return 0; // Sucesso
 }
 */
+
+// ============= Linked List Functions =============
+
+// Function to add a user to a list
+int add_user_to_list(user new_user) {
+    // Criando um novo nó para a lista
+    sem_wait(user_sem);
+
+    for (int i = 0; i < config->max_mobile_users; i++){
+        if (shm->mem[i].id == -999){
+            shm->mem[i] = new_user;
+            shm->mem[i].index = i;
+            sem_post(user_sem);
+            return 0;
+        }
+    }
+
+    sem_post(user_sem);
+
+    return -1;
+}
+
+// Function to verify if the user is in the list
+int user_in_list(int id) {
+    sem_wait(user_sem);
+
+    for (int i = 0; i < config->max_mobile_users; i++){
+        if (shm->mem[i].id == id){
+            
+            sem_post(user_sem);
+            return 1;
+        }
+    }
+
+    sem_post(user_sem);
+    return 0;  // ID não encontrado na lista
+}
+
+// Function to verify if "dados_reservar" is equal to -1
+int is_dados_reservar_zero(int id) {
+    sem_wait(user_sem);
+
+    for (int i = 0; i < config->max_mobile_users; i++){
+        if (shm->mem[i].id == id){
+            if (shm->mem[i].dados_reservar == -1){
+                sem_post(user_sem);
+                return 1;
+            } else {
+                sem_post(user_sem);
+                return 0;
+            }
+        }
+    }
+
+    sem_post(user_sem);
+    return 0;  // Retorna 0 se o ID não for encontrado
+}
+
+// Function to add to "dados_reservar" the value
+void add_to_dados_reservar(int id, int add_value) {
+    sem_wait(user_sem);
+
+    for (int i = 0; i <config->max_mobile_users; i++){
+        if (shm->mem[i].id == id){
+            shm->mem[i].dados_reservar = add_value;
+            sem_post(user_sem);
+            return;
+        }
+    }
+
+    sem_post(user_sem);
+}
+
+// Function to update the plafond
+int update_plafond(int id, char *type) {
+    sem_wait(user_sem);
+
+    for (int i = 0; i < config->max_mobile_users; i++){
+        if (shm->mem[i].id == id){
+            if (shm->mem[i].current_plafond >= shm->mem[i].dados_reservar){
+                shm->mem[i].current_plafond -= shm->mem[i].dados_reservar;
+
+                sem_wait(stats_sem);
+                if (strcmp(type, "VIDEO") == 0){
+                    shm->stats.td_video += shm->mem[i].dados_reservar;
+                } else if (strcmp(type, "SOCIAL") == 0){
+                    shm->stats.td_social += shm->mem[i].dados_reservar;
+                } else {
+                    shm->stats.td_music += shm->mem[i].dados_reservar;
+                }
+                sem_post(stats_sem);
+
+                sem_post(user_sem);
+                return 0;
+            } else {
+                shm->mem[i].current_plafond = 0;
+                sem_post(user_sem);
+                return 1;
+            }
+        }
+    }
+
+    sem_post(user_sem);
+    return -1;
+}
+
+// Print user list
+void print_user_list() {
+    sem_wait(user_sem);
+
+    for (int i = 0; i < config->max_mobile_users; i++){
+        if ((shm->mem[i].id != -999)){
+            printf("ID %d, Inital Plafond: %d, Actual Plafond %d, Reserved Data: %d, Index %d\n", shm->mem[i].id, shm->mem[i].initial_plafond, shm->mem[i].current_plafond, shm->mem[i].dados_reservar, shm->mem[i].index);
+        }
+    }
+
+    printf("\n");
+    sem_post(user_sem);
+}
+
