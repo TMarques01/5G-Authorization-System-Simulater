@@ -2,8 +2,6 @@
 //Tiago Marques 2022210638
 
 #include "shared_memory.h"
-#include "System_manager.h"
-#include "funcoes.h"
 
 int fd_named_pipe, login = 0, max_request, video_time, music_time, social_time, run = 1;
 user user_data;
@@ -11,9 +9,13 @@ pthread_t video, music, social, message_queue;
 pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 
 void handle_signal(int sigint){
-    printf("LOSING MOBILE USER...\n");
 
     run = 0;
+    printf("LOSING MOBILE USER...\n");
+    pthread_cancel(video);
+    pthread_cancel(social);
+    pthread_cancel(music);
+    pthread_cancel(message_queue);
     pthread_mutex_destroy(&mutex);
     //close(fd_named_pipe);
 
@@ -177,7 +179,7 @@ int main(int argc, char* argv[]){
 
     signal(SIGINT, handle_signal);
 
-    if ((fd_named_pipe = open(USER_PIPE, O_WRONLY)) < 0) {
+    if ((fd_named_pipe = open(USER_PIPE, O_RDWR)) < 0) {
         perror("CANNOT OPEN PIPE FOR WRITING: ");
         exit(1);
     }

@@ -1,12 +1,10 @@
 #include "shared_memory.h"
-#include "System_manager.h"
 
 int fd_back_pipe;
 int run = 1;
 
 void handle_signal(int sigint){
     run = 0;
-    sleep(1);
     close(fd_back_pipe);
     printf("\nBACKOFFICE TERMINATED\n");
 
@@ -48,7 +46,7 @@ int check_command(const char *input) {
 int main(){
 
     char msg_id[64];
-    if ((fd_back_pipe = open(BACK_PIPE, O_WRONLY)) < 0) {
+    if ((fd_back_pipe = open(BACK_PIPE, O_RDWR)) < 0) {
         perror("CANNOT OPEN PIPE FOR WRITING: ");
         exit(0);
     }

@@ -87,6 +87,7 @@ program_init *config;
 // Threads names
 pthread_t receiver_thread;
 pthread_t sender_thread;
+pthread_t back_office_stats, monitor_warning;
 
 // Principal process
 pid_t authorization_request_manager_process;

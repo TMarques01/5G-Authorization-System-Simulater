@@ -28,14 +28,6 @@ struct Node* createNode(char *command);
 void destroyQueue(struct Queue* queue);
 void enqueue(struct Queue* queue, char *command, int i);
 
-// User´s List
-int is_dados_reservar_zero(int id);
-int user_in_list(int id);
-void add_to_dados_reservar(int id, int add_value);
-int update_plafond(int id, char *type);
-int add_user_to_list(user new_user);
-void print_user_list();
-
 // Process and Threads
 void authorization_engine(int id, int (*pipes)[2]);
 void monitor_engine();

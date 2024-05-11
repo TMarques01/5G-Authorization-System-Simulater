@@ -271,4 +271,3 @@ void print_user_list() {
     printf("\n");
     sem_post(user_sem);
 }
-
