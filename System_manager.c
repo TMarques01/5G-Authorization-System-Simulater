@@ -3,87 +3,13 @@
 
 #include "System_manager.h"
 #include "funcoes.h"
-//#define DEBUG
-//#define LIST
-//#define ARRAY
+
 #define TAM 1024
 
 // Mutex
 pthread_mutex_t video_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t other_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t sender_cond = PTHREAD_COND_INITIALIZER;
-
-//pthread_mutexattr_t monitor_attrmutex;
-//pthread_condattr_t monitor_attrcond;
-
-// Authorization signal handler
-void author_signal(int sig){
-
-    pthread_cancel(receiver_thread);
-    pthread_cancel(sender_thread);
-
-    // Waiting for AE processes
-    for (int i = 0; i < config->auth_servers; i++) wait(NULL);
-
-    write_Queue(queue_other);
-    write_Queue(queue_video);
-
-    destroyQueue(queue_other);
-    destroyQueue(queue_video);
-
-    exit(0);
-}
-
-// Monitor signal handler
-void monitor_signal(int sig){
-
-    pthread_cancel(back_office_stats);
-    pthread_cancel(monitor_warning);
-
-    exit(0);
-}
-
-// Creat Unnamed pipes
-void create_unnamed_pipes(int pipes[][2]){
-  for (int i = 0; i < config->auth_servers; i++) {
-        if (pipe(pipes[i]) == -1) {
-          write_log("CANNOT CREATE UNNAMED PIPE -> EXITING");
-          exit(1);
-        }
-    }
-}
-
-// Verify wich AE is free
-int check_authorization_free(int i){
-
-    sem_wait(autho_free);
-    if (shm->authorization_free[i] == 0){
-        shm->authorization_free[i] = 1;
-        #ifdef ARRAY
-        for (int i = 0; i < config->auth_servers + 1; i++) printf("AUTHORIZATION_FREE[%d]: %d \n", i + 1, shm->authorization_free[i]);
-        #endif
-        sem_post(autho_free);
-        return 1;
-    } else {
-        sem_post(autho_free);
-        return 0;
-    }
-}
-
-// Verify if the user list is full
-int verify_user_list_full(){
-    sem_wait(user_sem);
-    for (int i = 0; i < config->max_mobile_users; i++){
-        if (shm->mem[i].id == -999){
-            sem_post(user_sem);
-            return 0;
-        } else {
-            continue;
-        }
-    }
-    sem_post(user_sem);
-    return 1;
-}
 
 // ============= Queue Functions =============
 
@@ -138,7 +64,7 @@ char* dequeue(struct Queue* queue, int i) {
 
     pthread_mutex_t* mutex;
 
-    // Determinar qual mutex deve ser usado com base no valor de 'i'
+    // wich mutex we will use (i = 0 -> video_mutex | i = 1 -> other_mutex)
     if (i == 0) {
         mutex = &video_mutex;
     } else {
@@ -154,24 +80,42 @@ char* dequeue(struct Queue* queue, int i) {
 
     struct Node* temp = queue->front;
     char* command = (char*) malloc(strlen(temp->command) + 1);
+    if (command == NULL) { // Check for malloc failure
+        pthread_mutex_unlock(mutex);
+        write_log("ERROR ALLOCATING MEMORY");
+        return NULL;
+    }
+
     strcpy(command, temp->command);
     queue->front = temp->next;
 
     if (queue->front == NULL) {
         queue->rear = NULL;
-    }
+    }/* else {
+
+        time(&queue->front->end);
+        double elapsed = difftime(queue->front->end, queue->front->start);
+        pthread_mutex_unlock(mutex);
+        if (!verify_queue_time(elapsed, command)) {
+            free(temp->command);
+            free(temp);
+
+            return command;
+        }
+    }*/
 
     free(temp->command);
     free(temp);
-
     pthread_mutex_unlock(mutex);
-    return command;
+
+    return command; // Adjust error handling or return an error code/message as needed
 }
 
 // Function to create a new node
 struct Node* createNode(char *command) {
     struct Node* newNode = (struct Node*)malloc(sizeof(struct Node));
     newNode->command = command;
+    time(&newNode->start);
     newNode->next = NULL;
     return newNode;
 }
@@ -186,17 +130,29 @@ struct Queue* createQueue() {
 // Returns queue size
 int queue_size(struct Queue* queue, int i) {
 
+    pthread_mutex_t* mutex;
+
+    // Determinar qual mutex deve ser usado com base no valor de 'i'
+    if (i == 0) {
+        mutex = &video_mutex;
+    } else {
+        mutex = &other_mutex;
+    }
+
     int count = 0;
+    //pthread_mutex_lock(mutex);
     struct Node* current = queue->front;
+    //pthread_mutex_unlock(mutex);
     while (current != NULL) {
         count++;
         current = current->next;
     }
 
+
     return count;
 }
 
-// Print the Queue
+// Print the Queue (DEBUG)
 void printQueue(struct Queue* queue, int i) {
     if (isEmpty(queue, i)) {
         printf("Queue is empty.\n");
@@ -256,14 +212,13 @@ void *back_stats(void *args){
 
     while (running){
 
-        sleep(10);
+        sleep(15);
 
-        sem_wait(user_sem);
+        sem_wait(stats_sem);
+        
         char tam[TAM];
         sprintf(tam,    "SERVIÇO   TOTAL DATA  AUTH REQS\nVIDEO       %d          %d\nMUSIC       %d          %d\nSOCIAL      %d          %d\n", 
         shm->stats.td_video, shm->stats.ar_video, shm->stats.td_music, shm->stats.ar_music, shm->stats.td_social, shm->stats.ar_social);
-
-        sem_post(user_sem);
 
         queue_msg back_msg;
         long prty = 1;
@@ -271,8 +226,10 @@ void *back_stats(void *args){
         strcpy(back_msg.message, tam);
 
         if (msgsnd(mq_id, &back_msg, sizeof(queue_msg) - sizeof(long), 0) == -1) write_log("ERROR WRITING FOR MESSAGE QUEUE");
+        
+        sem_post(stats_sem);
 
-        sleep(10);
+        sleep(15);
         
     }
     pthread_exit(NULL);
@@ -295,8 +252,10 @@ void *monitor_warnings(void *args){
 
             queue_msg msg_queue;
 
-            if (shm->mem[i].current_plafond == 0) {
+            if (shm->mem[i].current_plafond == 0 && shm->mem[i].triggers == 2) {
                 sprintf(log, "ALERT 100%% (USER ID = %d) TRIGGERED", shm->mem[i].id);
+
+                shm->mem[i].triggers++;
 
                 msg_queue.priority = shm->mem[i].id;
                 strcpy(msg_queue.message, log);
@@ -306,7 +265,10 @@ void *monitor_warnings(void *args){
 
                 continue;
 
-            } else if ((shm->mem[i].initial_plafond * 0.1 == shm->mem[i].current_plafond)) {
+            } else if ((shm->mem[i].initial_plafond * 0.1 >= shm->mem[i].current_plafond) &&
+                        (shm->mem[i].triggers == 1)) {
+
+                shm->mem[i].triggers++;
 
                 sprintf(log, "ALERT 90%% (USER ID = %d) TRIGGERED", shm->mem[i].id);
                 msg_queue.priority = shm->mem[i].id;
@@ -317,7 +279,10 @@ void *monitor_warnings(void *args){
             
                 continue;
 
-            } else if ((shm->mem[i].initial_plafond * 0.2 ==shm->mem[i].current_plafond)) {
+            } else if ((shm->mem[i].initial_plafond * 0.2 >= shm->mem[i].current_plafond) &&
+                        (shm->mem[i].triggers == 0)) {
+
+                shm->mem[i].triggers++;
 
                 sprintf(log, "ALERT 80%% (USER ID = %d) TRIGGERED", shm->mem[i].id);
                 msg_queue.priority = shm->mem[i].id;
@@ -333,7 +298,6 @@ void *monitor_warnings(void *args){
         }
 
         sem_post(user_sem);
-        //pthread_mutex_unlock(&shm->monitor_mutex);
     }
 
     pthread_exit(NULL);
@@ -343,6 +307,7 @@ void *monitor_warnings(void *args){
 void monitor_engine(){
 
     signal(SIGINT, monitor_signal);
+    signal(SIGTSTP, SIG_IGN); 
 
     if (pthread_create(&back_office_stats, NULL, back_stats, NULL ) != 0) {
         write_log("CANNOT CREATE BACK_OFFICE_STATS_THREAD");
@@ -354,7 +319,7 @@ void monitor_engine(){
         exit(1);
     }
 
-    // Closing threads
+    // Join threads
     if (pthread_join(back_office_stats, NULL) != 0){
         printf("CANNOT JOIN BACK OFFICE STATS THREAD");
         exit(1);
@@ -411,46 +376,66 @@ void *receiver(void *arg){
                 // Copy the original string
                 char buffer[1024];                              
                 strncpy(buffer, user_buffer, sizeof(buffer));   
-                buffer[sizeof(buffer) - 1] = '\0';              
+                buffer[sizeof(buffer) - 1] = '\0'; 
+          
 
                 char *token = strtok(buffer, "#");   //Token to get the values
 
-                token = strtok(NULL, "#"); 
+                token = strtok(NULL, "#");
+ 
+                // verify if the video queue is full
+                if ((strcmp(token, "VIDEO") == 0) && (queue_size(queue_video, 0) >= config->queue_pos)){
 
-                if ((strcmp(token, "MUSIC") == 0) || (strcmp(token, "SOCIAL") == 0) || (strcmp(token, "VIDEO") == 0)){
-                    if (strcmp(token, "VIDEO") == 0) { // GO TO VIDEO QUEUE
+                    char log[124];
+                    sprintf(log, "VIDEO QUEUE IS FULL. DISCARDING %s", user_buffer);
+                    write_log(log);
 
-                        enqueue(queue_video, user_buffer, 0);
-                        pthread_cond_signal(&sender_cond);
-                        #ifdef DEBUG
-                        printf("VIDEO USER BUFFER %s\n", user_buffer); 
-                        #endif
+                // verify if the other queue is full 
+                } else if (queue_size(queue_other, 1) >= config->queue_pos) {
+
+                    char log[124];
+                    sprintf(log, "OTHER QUEUE IS FULL. DISCARDING %s", user_buffer);
+                    write_log(log);
+                    
+                } else {
+
+                    if ((strcmp(token, "MUSIC") == 0) || (strcmp(token, "SOCIAL") == 0) || (strcmp(token, "VIDEO") == 0)){
+                        if (strcmp(token, "VIDEO") == 0) { // GO TO VIDEO QUEUE
+
+                            enqueue(queue_video, user_buffer, 0);
+                            pthread_cond_signal(&sender_cond);
+
+                            #ifdef DEBUG
+                            printf("VIDEO USER BUFFER %s\n", user_buffer); 
+                            #endif
+
+                        } else { // GO TO OTHER QUEUE
+
+                            enqueue(queue_other, user_buffer, 1);
+                            pthread_cond_signal(&sender_cond);
+
+                            #ifdef DEBUG
+                            printf("OTHER USER BUFFER %s\n", user_buffer); 
+                            #endif
+
+                        }
 
                     } else { // GO TO OTHER QUEUE
 
                         enqueue(queue_other, user_buffer, 1);
                         pthread_cond_signal(&sender_cond);
+
                         #ifdef DEBUG
-                        printf("OTHER USER BUFFER %s\n", user_buffer); 
+                        printf("FIRST USER BUFFER %s\n", user_buffer); 
                         #endif
 
                     }
-
-                } else { // GO TO OTHER QUEUE
-
-                    enqueue(queue_other, user_buffer, 1);
-                    pthread_cond_signal(&sender_cond);
-
-                    #ifdef DEBUG
-                    printf("FIRST USER BUFFER %s\n", user_buffer); 
-                    #endif
-
                 }
-
                 #ifdef DEBUG
                 printf("VIDEO QUEUE SIZE %d\n", queue_size(queue_video, 0));
                 printf("OTHER QUEUE SIZE %d\n", queue_size(queue_other, 1));
                 #endif
+
                 memset(buffer, 0 ,sizeof(buffer));
                 FD_CLR(fd_user_pipe, &read_set); 
 
@@ -472,7 +457,6 @@ void *receiver(void *arg){
 
                 FD_CLR(fd_back_pipe, &read_set);
             }
-            
         }
     }
 
@@ -521,6 +505,8 @@ void *sender(void *arg){
             if (extra_authorization_engine == 0){ // creating extra authorization engine
                 authorization_engine(config->auth_servers, &pipes[config->auth_servers]);
                 exit(0);
+            } else if (extra_authorization_engine == -1){
+                write_log("ERROR CREATING EXTRA AUTHORIZATION ENGINE");
             }
 
             close(pipes[config->auth_servers][0]);
@@ -534,8 +520,8 @@ void *sender(void *arg){
         if (n_auth_servers == config->auth_servers + 1){ 
             if (queue_size(queue_video, 0) >= (config->queue_pos/2) && flag == 2){
 
-                close(pipes[config->auth_servers][1]);
                 kill(extra_authorization_engine, SIGINT);
+                close(pipes[config->auth_servers][1]);
                 flag = 0;
                 n_auth_servers--;
 
@@ -548,10 +534,11 @@ void *sender(void *arg){
             }
         }
 
+        // Verify if the video queue is empty
         if (!(isEmpty(queue_video, 0))){
             while(!isEmpty(queue_video, 0)){
                 for (int i = 0; i < n_auth_servers; i++){
-                    if (check_authorization_free(i)){
+                    if (check_authorization_free(i)){ // check wich AE is available
 
                         char *msg_video = dequeue(queue_video, 0);
 
@@ -559,37 +546,68 @@ void *sender(void *arg){
                         printf("SENDER VIDEO: %s\n", msg_video);
                         #endif
 
-                        char aux[TAM];
-                        strcpy(aux, msg_video);
-
-                        char log_msg[TAM];
-                        sprintf(log_msg, "SENDER: VIDEO AUTHORIZATION REQUEST (ID = %s) SENT FOR PROCESSING ON AUTHORIZATION_ENGINE %d", strtok(aux, "#") , i + 1);
-                        ssize_t bytes_written = write(pipes[i][1], msg_video, strlen(msg_video) + 1);
-                        if (bytes_written < 0){
-                            perror("ERROR WRITING");
-                        } else {
-                            
-                            sem_wait(stats_sem);
-                            shm->stats.ar_video++;
-                            sem_post(stats_sem);
-
-                            write_log(log_msg);
+                        if (msg_video == NULL){ // if the request time overpassed the max time
+                            write_log("DISCARDING A REQUEST");
+                            sem_wait(autho_free);
+                            shm->authorization_free[i] = 0;
+                            sem_post(autho_free);
                             break;
+
+                        } else {
+
+                            char aux[TAM];
+                            strcpy(aux, msg_video);
+
+                            char log_msg[TAM];
+                            sprintf(log_msg, "SENDER: VIDEO AUTHORIZATION REQUEST (ID = %s) SENT FOR PROCESSING ON AUTHORIZATION_ENGINE %d", strtok(aux, "#") , i + 1);
+                            
+                            sem_wait(user_sem);
+                            ssize_t bytes_written = write(pipes[i][1], msg_video, strlen(msg_video) + 1);
+
+
+                            if (bytes_written < 0){
+                                write_log("ERROR WRITING TO THE UNNAMED PIPE");
+
+                                sem_wait(autho_free);
+                                shm->authorization_free[i] = 0;
+                                sem_post(autho_free);
+                                sem_post(user_sem);
+                                break;                            
+                                
+                            } else {
+                                
+                                sem_wait(stats_sem);
+                                shm->stats.ar_video++;
+                                sem_post(stats_sem);
+
+                                write_log(log_msg);
+                                sem_post(user_sem);
+                                break;
+                            }
                         }
                     } 
                 }  
             }
-        } else {
+        } else { // if the video queue is not empty, will check the other queue
             if (!isEmpty(queue_other, 1)){   
                 for (int i = 0; i < n_auth_servers; i++){
-                    if (check_authorization_free(i)){
+                    if (check_authorization_free(i)){ // check wich AE is available
 
                         char *msg_other = dequeue(queue_other, 1);
-                        
+
                         #ifdef DEBUG
                         printf("SENDER OTHER: %s\n", msg_other);
                         #endif
 
+                        if (msg_other == NULL){ // if the request time overpassed the max time
+                            write_log("DISCARDING A REQUEST");
+                            sem_wait(autho_free);
+                            shm->authorization_free[i] = 0;
+                            sem_post(autho_free);
+                            break;
+
+                        }                       
+                        
                         char aux[TAM];
                         strcpy(aux, msg_other);
 
@@ -597,16 +615,29 @@ void *sender(void *arg){
                         sprintf(log_msg, "SENDER: OTHER AUTHORIZATION REQUEST (ID = %s) SENT FOR PROCESSING ON AUTHORIZATION_ENGINE %d", strtok(aux,"#"), i + 1);
                         char *type = strtok(NULL, "#");
 
+                        // sending to the unnamed pipe
+                        sem_wait(user_sem); 
                         ssize_t bytes_written = write(pipes[i][1], msg_other, strlen(msg_other) + 1);
+
+
                         if (bytes_written < 0){
-                            perror("ERROR WRITING");
+
+                            write_log("ERROR WRITING TO THE UNNAMED PIPE");
+
+                            sem_wait(autho_free);
+                            shm->authorization_free[i] = 0;
+                            sem_post(autho_free);
+                            sem_post(user_sem);
+                            break;   
+
                         } else {
 
-                            if (strcmp(type, "SOCIAL") == 0){
+                            if (strcmp(type, "SOCIAL") == 0){ // add to the stats variables according to the type
 
                                 sem_wait(stats_sem);
                                 shm->stats.ar_social++;
                                 sem_post(stats_sem);
+
                             } else if (strcmp(type, "MUSIC") == 0){
 
                                 sem_wait(stats_sem);
@@ -615,6 +646,7 @@ void *sender(void *arg){
                             }
 
                             write_log(log_msg);
+                            sem_post(user_sem);
                             break;
                         }
                     }
@@ -643,7 +675,7 @@ void authorization_engine(int id, int (*pipes)[2]){
 
         if (bytes_read > 0){
 
-            //time(&start);
+            time(&start);
             
             #ifdef ARRAY    
             printf("AUTHORIZATION ENGINE %d MSG: %s\n",id + 1 ,msg);
@@ -666,13 +698,13 @@ void authorization_engine(int id, int (*pipes)[2]){
 
                 if (strcmp(msg, "1#data_stats") == 0){
 
-                    sem_wait(user_sem);
+                    sem_wait(stats_sem);
 
                     char tam[TAM];
                     sprintf(tam,    "SERVIÇO   TOTAL DATA  AUTH REQS\nVIDEO       %d          %d\nMUSIC       %d          %d\nSOCIAL      %d          %d\n", 
                     shm->stats.td_video, shm->stats.ar_video, shm->stats.td_music, shm->stats.ar_music, shm->stats.td_social, shm->stats.ar_social);
 
-                    sem_post(user_sem);
+                    sem_post(stats_sem);
                 
                     queue_msg back_msg;
                     long prty = 1;
@@ -683,7 +715,7 @@ void authorization_engine(int id, int (*pipes)[2]){
 
                 } else {    
                     
-                    sem_wait(user_sem);
+                    sem_wait(stats_sem);
 
                     shm->stats.ar_music = 0;
                     shm->stats.ar_social = 0;
@@ -692,7 +724,7 @@ void authorization_engine(int id, int (*pipes)[2]){
                     shm->stats.td_video = 0;
                     shm->stats.td_social = 0;
 
-                    sem_post(user_sem);
+                    sem_post(stats_sem);
 
                     queue_msg back_msg;
                     long prty = 1;
@@ -735,6 +767,8 @@ void authorization_engine(int id, int (*pipes)[2]){
                         }
 
                         int plafond = update_plafond(aux.id, type);
+                        
+                        // send the signal to the monitor engine
                         sem_post(monitor_sem);
 
                         if (plafond == 1){ // if all plafond is used
@@ -755,7 +789,7 @@ void authorization_engine(int id, int (*pipes)[2]){
                     print_user_list();
                     #endif 
 
-                } else {
+                } else { // if the list is full
 
                     write_log("USER LIST IS FULL!");
                     queue_msg msg;
@@ -770,12 +804,12 @@ void authorization_engine(int id, int (*pipes)[2]){
                 }
             }
 
-            //time(&end);
+            time(&end);
 
-            //double elapsed = difftime(end, start);
-            //if (elapsed/1000 < config->auth_proc_time){
-            //    sleep((config->auth_proc_time - elapsed) / 1000);
-            //}
+            double elapsed = difftime(end, start);
+            if (elapsed/1000 < config->auth_proc_time){
+                sleep((config->auth_proc_time - elapsed) / 1000);
+            }
 
             sem_wait(autho_free);
             shm->authorization_free[id] = 0;
@@ -790,6 +824,7 @@ void authorization_engine(int id, int (*pipes)[2]){
 void authorization_request_manager(){
 
     signal(SIGINT, author_signal);
+    signal(SIGTSTP, SIG_IGN); 
 
     pid_t main_pid = getpid();
 
@@ -845,8 +880,38 @@ void authorization_request_manager(){
 
 // ============= MAIN PROGRAM =============
 
+// Authorization Engine signal handler
+void author_signal(int sig){
+
+    pthread_cancel(receiver_thread);
+    pthread_cancel(sender_thread);
+
+    // Waiting for AE processes
+    for (int i = 0; i < config->auth_servers; i++) wait(NULL);
+
+    write_Queue(queue_other);
+    write_Queue(queue_video);
+
+    destroyQueue(queue_other);
+    destroyQueue(queue_video);
+
+    exit(0);
+}
+
+// Monitor signal handler
+void monitor_signal(int sig){
+
+    pthread_cancel(back_office_stats);
+    pthread_cancel(monitor_warning);
+
+    exit(0);
+}
+
+
 // Closing function
-void cleanup(){
+void cleanup(int sig){
+
+    write_log("SIGNAL SIGINT RECEIVED");
 
     int status, status1;
     running = 0;
@@ -865,13 +930,6 @@ void cleanup(){
     pthread_mutex_destroy(&video_mutex);
     pthread_mutex_destroy(&other_mutex);
     pthread_cond_destroy(&sender_cond);
-
-/*
-    pthread_mutex_destroy(&shm->monitor_mutex);
-    pthread_mutexattr_destroy(&monitor_attrmutex);
-    pthread_cond_destroy(&shm->monitor_cond);
-    pthread_condattr_destroy(&monitor_attrcond);
-*/
 
     // Close log file, destroy semaphoro and pipes
     if (sem_close(log_semaphore) == -1) write_log("ERROR CLOSING LOG SEMAPHORE\n");
@@ -953,7 +1011,8 @@ void init_program(){
                             .current_plafond = -999,
                             .dados_reservar = -999,
                             .id = -999,
-                            .index = -999}; 
+                            .index = -999,
+                            .triggers = 0}; 
     }
 
     for (int i = 0; i < config->auth_servers + 1; i++) shm->authorization_free[i] = 0;
@@ -964,17 +1023,6 @@ void init_program(){
     shm->stats.td_music = 0;
     shm->stats.td_video = 0;
     shm->stats.td_social = 0;
-
-/*
-    pthread_mutexattr_init(&monitor_attrmutex);
-    pthread_mutexattr_setpshared(&monitor_attrmutex, PTHREAD_PROCESS_SHARED);
-
-    pthread_condattr_init(&monitor_attrcond);
-    pthread_condattr_setpshared(&monitor_attrcond, PTHREAD_PROCESS_SHARED);
-
-    pthread_mutex_init(&shm->monitor_mutex, &monitor_attrmutex);
-    pthread_cond_init(&shm->monitor_cond, &monitor_attrcond);
-*/
 
     // Init Semaphore
     sem_unlink(USER_SEM);
@@ -1053,6 +1101,7 @@ int main(int argc, char* argv[]){
 
     // Signal to end program
     signal(SIGINT, cleanup);
+    signal(SIGTSTP, SIG_IGN); 
 
     wait(NULL);
 }

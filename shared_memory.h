@@ -21,6 +21,10 @@
 
 #define LOG_SEM_NAME "log_semaphore"
 
+//#define DEBUG
+//#define LIST
+//#define ARRAY
+
 // Pipe Names
 #define USER_PIPE "user_pipe"
 #define BACK_PIPE "back_pipe"
@@ -43,6 +47,7 @@ typedef struct user{
     int dados_reservar;
     int id;
     int index;
+    int triggers;
 }user;
 
 // Message queue struct
@@ -63,14 +68,13 @@ typedef struct{
     user *mem;
     int *authorization_free;
     statistic stats;
-
-    //pthread_mutex_t monitor_mutex;
-    //pthread_cond_t monitor_cond;
 } shared_m;
 
 // Video Queue and Other Queue
 typedef struct Node {
     char *command;
+    time_t start;
+    time_t end;
     struct Node* next;
 }Node;
 

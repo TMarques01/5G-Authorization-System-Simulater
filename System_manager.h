@@ -14,9 +14,8 @@ struct ThreadArgs {
   struct Queue* queue_other;
 };
 
-void create_unnamed_pipes(int pipes[][2]);
-int check_authorization_free(int i);
-int verify_user_list_full();
+void author_signal(int sig);
+void monitor_signal(int sig);
 
 // Queue
 struct Queue* createQueue();
@@ -36,7 +35,7 @@ void *sender(void *arg);
 void authorization_request_manager();
 
 // Main program funcions
-void cleanup();
+void cleanup(int sig);
 void init_log();
 void init_program();
 #endif

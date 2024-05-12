@@ -5,7 +5,7 @@
 #include "shared_memory.h"
 #include "funcoes.h"
 
-// Creat Named pipes
+// Create Named pipes
 void create_named_pipe(char *name){ 
   unlink(name);
   if ((mkfifo(name, O_CREAT|O_EXCL|0600)<0) && (errno != EEXIST)){
@@ -49,7 +49,7 @@ char *read_from_pipe(int pipe_fd){
     }
 }
 
-//Função para verificar se uma string é um número
+// Verify if a string is a number
 int is_number(char* str) {
     for (int i = 0; str[i] != '\0'; i++) {
         if (!isdigit(str[i])) {
@@ -59,7 +59,7 @@ int is_number(char* str) {
     return 1; // É um número
 }
 
-//Função de verificação do ficheiro
+// Verify the values from the file
 int file_verification(const char* filename) {
     FILE *f = fopen(filename, "r");
 
@@ -270,4 +270,72 @@ void print_user_list() {
 
     printf("\n");
     sem_post(user_sem);
+}
+
+// =======================================
+
+// Verify how long an orden has been in the queue
+int verify_queue_time(double elapsed, char *command){
+
+
+    char *token = strtok(command, "#");
+    token = strtok(NULL, "#");
+
+    if (strcmp(token, "VIDEO") == 0){
+        if (elapsed > config->max_video_wait/1000){
+            return 1;
+        } else {
+            return 0;
+        }
+    } else {
+        if (elapsed > config->max_others_wait/1000){
+            return 1;
+        } else {
+            return 0;
+        }
+    }
+}
+
+// Creat Unnamed pipes
+void create_unnamed_pipes(int pipes[][2]){
+  for (int i = 0; i < config->auth_servers; i++) {
+        if (pipe(pipes[i]) == -1) {
+          write_log("CANNOT CREATE UNNAMED PIPE -> EXITING");
+          exit(1);
+        }
+    }
+}
+
+// Verify wich AE is free
+int check_authorization_free(int i){
+
+    sem_wait(autho_free);
+    if (shm->authorization_free[i] == 0){
+        shm->authorization_free[i] = 1;
+
+        #ifdef ARRAY
+        for (int i = 0; i < config->auth_servers + 1; i++) printf("AUTHORIZATION_FREE[%d]: %d \n", i + 1, shm->authorization_free[i]);
+        #endif
+        
+        sem_post(autho_free);
+        return 1;
+    } else {
+        sem_post(autho_free);
+        return 0;
+    }
+}
+
+// Verify if the user list is full
+int verify_user_list_full(){
+    sem_wait(user_sem);
+    for (int i = 0; i < config->max_mobile_users; i++){
+        if (shm->mem[i].id == -999){
+            sem_post(user_sem);
+            return 0;
+        } else {
+            continue;
+        }
+    }
+    sem_post(user_sem);
+    return 1;
 }
