@@ -272,7 +272,7 @@ void print_user_list() {
     sem_post(user_sem);
 }
 
-// =======================================
+// ================ AUX FUNCTIONS =====================
 
 // Verify how long an orden has been in the queue
 int verify_queue_time(double elapsed, char *command){

@@ -28,7 +28,6 @@ void monitor_signal(int sig);
 struct Queue* createQueue();
 char* dequeue(struct Queue* queue, int i);
 int queue_size(struct Queue* queue, int i);
-void printQueue(struct Queue* queue, int i);
 void write_Queue(struct Queue* queue);
 struct Node* createNode(char *command);
 void destroyQueue(struct Queue* queue);

@@ -21,16 +21,20 @@
 
 #define LOG_SEM_NAME "log_semaphore"
 
+// DEBUG VARIABLES
 //#define DEBUG
-#define LIST
+//#define LIST
 //#define ARRAY
+#define EXTRA_AE
 
 // Pipe Names
 #define USER_PIPE "user_pipe"
 #define BACK_PIPE "back_pipe"
 
+// Message queue name
 #define MSQ_FILE "msq_file.txt"
 
+// Initial config struct
 typedef struct program_init{
     int max_mobile_users;
     int queue_pos;
@@ -121,7 +125,5 @@ sem_t *cond;
 // Queue variables
 struct Queue* queue_video;
 struct Queue* queue_other;
-
-int running;
 
 #endif

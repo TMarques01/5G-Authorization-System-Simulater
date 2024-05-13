@@ -13,7 +13,7 @@ pthread_cond_t sender_cond = PTHREAD_COND_INITIALIZER;
 
 int init_unnamed_pipes(){
     pipes = malloc(config->auth_servers * sizeof(*pipes));
-    for (int i = 0; i < config->auth_servers; i++) {
+    for (int i = 0; i < config->auth_servers + 1; i++) {
         if (pipe(pipes[i]) == -1) {
             perror("Failed to create pipe");
 
@@ -147,16 +147,14 @@ struct Queue* createQueue() {
 // Returns queue size
 int queue_size(struct Queue* queue, int i) {
 
-    //pthread_mutex_t* mutex;
+    /*pthread_mutex_t* mutex;
 
-    // Determinar qual mutex deve ser usado com base no valor de 'i'
-    //if (i == 0) {
-    //    mutex = &video_mutex;
-    //} else {
-    //    mutex = &other_mutex;
-    //}
+    if (i == 0) {
+        mutex = &video_mutex;
+    } else {
+        mutex = &other_mutex;
+    }*/
     
-
     int count = 0;
     //pthread_mutex_lock(mutex);
     struct Node* current = queue->front;
@@ -167,20 +165,6 @@ int queue_size(struct Queue* queue, int i) {
     }
 
     return count;
-}
-
-// Print the Queue (DEBUG)
-void printQueue(struct Queue* queue, int i) {
-    if (isEmpty(queue, i)) {
-        printf("Queue is empty.\n");
-        return;
-    }
-    struct Node* current = queue->front;
-    printf("Queue contents:\n");
-    while (current != NULL) {
-        printf("%s\n", current->command);
-        current = current->next;
-    }
 }
 
 // Print last requestes in the queue
@@ -200,7 +184,7 @@ void write_Queue(struct Queue* queue) {
     }
 }
 
-// destroy the queueuç
+// destroy the queueu
 void destroyQueue(struct Queue* queue) {
     if ((queue->front == NULL) || (queue->rear == NULL)){
         free(queue);
@@ -324,7 +308,6 @@ void *monitor_warnings(void *args){
 void monitor_engine(){
 
     signal(SIGINT, monitor_signal);
-    signal(SIGTSTP, SIG_IGN); 
 
     if (pthread_create(&back_office_stats, NULL, back_stats, NULL ) != 0) {
         write_log("CANNOT CREATE BACK_OFFICE_STATS_THREAD");
@@ -353,6 +336,7 @@ void *receiver(void *arg){
     write_log("THREAD RECEIVER CREATED");
 
     struct ThreadArgs *args = (struct ThreadArgs*) arg;
+    //int (*pipes)[2] = args->pipes;
     struct Queue* queue_video = args->queue_video;
     struct Queue* queue_other = args->queue_other;
 
@@ -421,7 +405,6 @@ void *receiver(void *arg){
 
                             enqueue(queue_video, user_buffer, 0);
                             pthread_cond_signal(&sender_cond);
-                            //sem_post(cond);
 
                             #ifdef DEBUG
                             printf("VIDEO USER BUFFER %s\n", user_buffer); 
@@ -431,24 +414,20 @@ void *receiver(void *arg){
 
                             enqueue(queue_other, user_buffer, 1);
                             pthread_cond_signal(&sender_cond);
-                            //sem_post(cond);
 
                             #ifdef DEBUG
                             printf("OTHER USER BUFFER %s\n", user_buffer); 
                             #endif
-
                         }
 
                     } else { // GO TO OTHER QUEUE
 
                         enqueue(queue_other, user_buffer, 1);
                         pthread_cond_signal(&sender_cond);
-                        //sem_post(cond);
 
                         #ifdef DEBUG
                         printf("FIRST USER BUFFER %s\n", user_buffer); 
                         #endif
-
                     }
                 }
 
@@ -474,7 +453,7 @@ void *receiver(void *arg){
 
                     enqueue(queue_other, back_buffer, 1);
                     pthread_cond_signal(&sender_cond);
-                    //sem_post(cond);
+
                 }
 
                 FD_CLR(fd_back_pipe, &read_set);
@@ -490,15 +469,14 @@ void *sender(void *arg){
     write_log("THREAD SENDER CREATED");
 
     int n_auth_servers = config->auth_servers;
-    pid_t extra_authorization_engine;
     int flag = 0;
 
     struct ThreadArgs *args = (struct ThreadArgs*) arg;
-    int (*pipes)[2] = args->pipes;
+    //int (*pipes)[2] = args->pipes;
     struct Queue* queue_video = args->queue_video;
     struct Queue* queue_other = args->queue_other;
 
-    //for (int i = 0; i < config->auth_servers; i++) close(pipes[i][0]);
+    for (int i = 0; i < config->auth_servers; i++) close(pipes[i][0]);
 
     while (verify_running()) {
         
@@ -510,28 +488,14 @@ void *sender(void *arg){
         pthread_mutex_unlock(&video_mutex);
 
         // Verify if the queue is full
+        #ifdef EXTRA_AE
         if ((queue_size(queue_video, 0) == config->queue_pos || queue_size(queue_other, 1) == config->queue_pos) && flag == 0){
 
             if (queue_size(queue_video, 0) == config->queue_pos){
                 flag = 2; // flag 2 if the video queue is full
-            } else if (queue_size(queue_other, 1) == 0){
+            } else if (queue_size(queue_other, 1) == config->queue_pos){
                 flag = 3; // flag = 3 if the other queue is full
             }
-            
-            if (pipe(pipes[config->auth_servers]) == -1) { // creating extra pipe
-                write_log("CANNOT CREATE UNNAMED PIPE -> EXITING");
-                exit(1);
-            }
-
-            extra_authorization_engine = fork();
-            if (extra_authorization_engine == 0){ // creating extra authorization engine
-                authorization_engine(config->auth_servers);
-                exit(0);
-            } else if (extra_authorization_engine == -1){
-                write_log("ERROR CREATING EXTRA AUTHORIZATION ENGINE");
-            }
-
-            close(pipes[config->auth_servers][0]);
 
             n_auth_servers++;
 
@@ -540,23 +504,22 @@ void *sender(void *arg){
 
         // verify if the queue is 50% size and remove the extra AE
         if (n_auth_servers == config->auth_servers + 1){ 
-            if (queue_size(queue_video, 0) <= (config->queue_pos/2) && flag == 2){
+            if ((queue_size(queue_video, 0) <= (config->queue_pos/2)) && flag == 2){
 
-                kill(extra_authorization_engine, SIGINT);
                 close(pipes[config->auth_servers][1]);
                 flag = 0;
                 n_auth_servers--;
                 write_log("KILLING EXTRA AUTHORIZATION ENGINE");
 
-            } else if (queue_size(queue_other, 1 ) <= (config->queue_pos/2) && flag == 3){
+            } else if ((queue_size(queue_other, 1 ) <= (config->queue_pos/2)) && flag == 3){
 
-                kill(extra_authorization_engine, SIGINT);
                 close(pipes[config->auth_servers][1]);                
                 flag = 0;
                 n_auth_servers--;
                 write_log("KILLING EXTRA AUTHORIZATION ENGINE");
             }
         }
+        #endif
 
         // Verify if the video queue is empty
         if (!(isEmpty(queue_video, 0))){
@@ -684,7 +647,7 @@ void *sender(void *arg){
 void authorization_engine(int id){
 
     char log[64];
-    sprintf(log, "AUTHORIZATION ENGINE %d INIT", id + 1);
+    sprintf(log, "AUTHORIZATION ENGINE %d READY", id + 1);
     write_log(log);
 
     close(pipes[id][1]);
@@ -693,9 +656,6 @@ void authorization_engine(int id){
 
         char msg[1024];
 
-        //int flags = fcntl(pipes[id][0], F_GETFL, 0);
-        //fcntl(pipes[id][0], F_SETFL, flags & ~O_NONBLOCK);
-
         ssize_t bytes_read = read(pipes[id][0], msg, sizeof(msg));
 
         if (bytes_read > 0){
@@ -703,7 +663,7 @@ void authorization_engine(int id){
             time_t start, end;
             time(&start);
             
-            #ifdef ARRAY    
+            #ifdef DEBUG    
             printf("AUTHORIZATION ENGINE %d MSG: %s\n",id + 1 ,msg);
             #endif
 
@@ -722,7 +682,6 @@ void authorization_engine(int id){
                 printf("MENSAGEM BACKOFFICE %s\n", msg);                
                 #endif
 
-
                 if (strcmp(msg, "1#data_stats") == 0){
 
                     sem_wait(stats_sem);
@@ -739,6 +698,10 @@ void authorization_engine(int id){
                     strcpy(back_msg.message, tam);
 
                     if (msgsnd(mq_id, &back_msg, sizeof(queue_msg) - sizeof(long), 0) == -1) write_log("ERROR WRITING FOR MESSAGE QUEUE");
+
+                    char log[124];
+                    sprintf(log, "AUTHORIZATION_ENGINE %d: VIDEO AUTHORIZATION REQUEST (ID = 1) PROCESSING COMPLETED", id + 1);
+                    write_log(log);
 
                 } else {    
                     
@@ -758,9 +721,15 @@ void authorization_engine(int id){
                     back_msg.priority = prty;
                     
                     strcpy(back_msg.message, "STATISTIC RESETED\n");
+                    write_log("STATISTIC RESETED");
 
                     if (msgsnd(mq_id, &back_msg, sizeof(queue_msg) - sizeof(long), 0) == -1) write_log("ERROR WRITING FOR MESSAGE QUEUE");
+                    
+                    char log[124];
+                    sprintf(log, "AUTHORIZATION_ENGINE %d: VIDEO AUTHORIZATION REQUEST (ID = 1) PROCESSING COMPLETED", id + 1);
+                    write_log(log);
                 }
+
             } else { // MESSSAGE FROM MOBILE USER
 
                 aux.id = atoi(token);
@@ -820,6 +789,7 @@ void authorization_engine(int id){
 
                     write_log("USER LIST IS FULL!");
                     queue_msg msg;
+
                     long prty = aux.id;
                     msg.priority = prty;
                     strcpy(msg.message, "USER LIST IS FULL!");
@@ -853,7 +823,6 @@ void authorization_engine(int id){
 void authorization_request_manager(){
 
     signal(SIGINT, author_signal);
-    signal(SIGTSTP, SIG_IGN); 
 
     pid_t main_pid = getpid();
 
@@ -861,13 +830,10 @@ void authorization_request_manager(){
     create_named_pipe(USER_PIPE);
     create_named_pipe(BACK_PIPE);
 
-
-    //int pipes[config->auth_servers][2];
-    //create_unnamed_pipes(pipes);
     init_unnamed_pipes();
 
     // Create authorization engine processes
-    for (int i = 0; i < config->auth_servers; i++){
+    for (int i = 0; i < config->auth_servers + 1; i++){
         if (main_pid == getpid()){
             pid_t ae = fork();
             if (ae == 0){
@@ -913,13 +879,9 @@ void authorization_request_manager(){
 // Authorization Engine signal handler
 void author_signal(int sig){
 
-    //if (getpid() == authorization_request_manager_process){
-
         pthread_cancel(receiver_thread);
         pthread_cancel(sender_thread);
 
-        // Waiting for AE processes
-        //for (int i = 0; i < config->auth_servers; i++) wait(NULL);
         while (wait(NULL) > 0);
 
         write_Queue(queue_other);
@@ -929,23 +891,21 @@ void author_signal(int sig){
         destroyQueue(queue_video);
 
         exit(0);
-    //}
 }
 
 // Monitor signal handler
 void monitor_signal(int sig){
 
-    //if (getpid() == monitor_engine_process){
         pthread_cancel(back_office_stats);
         pthread_cancel(monitor_warning);
         exit(0);
-    //}
 }
 
 // Closing function
 void cleanup(int sig){
 
     if (getpid() == system_manager_process){
+
         write_log("SIGNAL SIGINT RECEIVED");
 
         int status, status1;
@@ -983,9 +943,6 @@ void cleanup(int sig){
         if (sem_close(running_sem) == -1) write_log("ERROR CLOSING RUNNING SEMAPHORE\n");
         if (sem_unlink(RUN_SEM) == -1 ) write_log ("ERROR UNLINKING RUNNING SEMAPHORE\n");
         
-        if (sem_close(cond) == -1) write_log("ERROR CLOSING RUNNING SEMAPHORE\n");
-        if (sem_unlink(COND_SEM) == -1 ) write_log ("ERROR UNLINKING RUNNING SEMAPHORE\n");
-
         if (fclose(log_file) == EOF) write_log("ERROR CLOSIGN LOG FILE\n");
         if (unlink(USER_PIPE) == -1) write_log("ERROR UNLINKING PIPE USER_PIPE\n");
         if (unlink(BACK_PIPE) == -1 )write_log("ERROR UNLINKING PIPE BACK_PIPE\n");
@@ -1018,8 +975,6 @@ void init_log(){
 void init_program(){
 
     write_log("5G_AUTH_PLATFORM SIMULATOR STARTING");
-
-    running = 1;
 
     // Creating Message Queue
     if ((mq_id = msgget(IPC_PRIVATE, 0777|IPC_CREAT)) == -1){
@@ -1107,13 +1062,6 @@ void init_program(){
         exit(1);
     }
 
-    sem_unlink(COND_SEM);
-    cond = sem_open(COND_SEM, O_CREAT | O_EXCL, 0777, 0);
-    if (cond == SEM_FAILED) {
-        perror("sem_open");
-        exit(1);
-    }    
-
     // Create authorization requeste manager process
     authorization_request_manager_process = fork();
     if (authorization_request_manager_process == 0){
@@ -1164,7 +1112,7 @@ int main(int argc, char* argv[]){
 
     // Signal to end program
     signal(SIGINT, cleanup);
-    signal(SIGTSTP, SIG_IGN); 
+    signal(SIGTSTP, cleanup);
 
     wait(NULL);
 }

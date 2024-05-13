@@ -3,6 +3,8 @@
 
 #include "shared_memory.h"
 
+#define SLOW
+
 int fd_named_pipe, login = 0, max_request, video_time, music_time, social_time, run = 1;
 user user_data;
 pthread_t video, music, social, message_queue;
@@ -10,8 +12,12 @@ pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 
 void handle_signal(int sigint){
 
+    static int already_handling = 0;
+    if (already_handling) return;
+    already_handling = 1;
+
     run = 0;
-    printf("LOSING MOBILE USER...\n");
+    printf("CLOSING MOBILE USER...\n");
     pthread_cancel(video);
     pthread_cancel(social);
     pthread_cancel(music);
@@ -30,9 +36,11 @@ int verify_max_request(){
         pthread_mutex_unlock(&mutex);
         return 1;
     } else {
-        pthread_mutex_unlock(&mutex);
+
         printf("MAX REQUEST OVERPAST\n");
-        run = 0;
+        handle_signal(SIGINT);
+
+        pthread_mutex_unlock(&mutex);
         return 0;
     }
 }
@@ -55,7 +63,10 @@ void *video_thread(void *arg){
     while (verify_max_request()){
 
         sprintf(buffer_login, "%d#VIDEO#%d", getpid(), user_data.dados_reservar);
-        //printf("VIDEO QUEUE: %s\n", buffer_login);
+
+        #ifdef DEBUG
+        printf("VIDEO QUEUE: %s\n", buffer_login);
+        #endif
 
         pthread_mutex_lock(&mutex);
         ssize_t bytes_read = write(fd_named_pipe, buffer_login, sizeof(buffer_login));
@@ -67,7 +78,11 @@ void *video_thread(void *arg){
             max_request--;
             pthread_mutex_unlock(&mutex);
 
-            sleep(video_time/1000);
+            #ifdef SLOW
+            sleep(video_time);
+            #endif
+
+            sleep(video_time /1000);
 
             memset(buffer_login, 0, sizeof(buffer_login));
         }
@@ -81,7 +96,10 @@ void *music_thread(void *arg){
     while (verify_max_request()){
 
         sprintf(buffer_login, "%d#MUSIC#%d", getpid(), user_data.dados_reservar);
-        //printf("MUSIC QUEUE: %s\n", buffer_login);
+
+        #ifdef DEBUG
+        printf("MUSIC QUEUE: %s\n", buffer_login);
+        #endif
 
         pthread_mutex_lock(&mutex);
         ssize_t bytes_read = write(fd_named_pipe, buffer_login, sizeof(buffer_login));
@@ -93,7 +111,12 @@ void *music_thread(void *arg){
             max_request--;
             pthread_mutex_unlock(&mutex);
 
+            #ifdef SLOW
+            sleep(music_time);
+            #endif
+
             sleep(music_time/1000);
+
             memset(buffer_login, 0, sizeof(buffer_login));
         }       
     }
@@ -106,7 +129,10 @@ void *social_thread(void *arg){
     while (verify_max_request()){
 
         sprintf(buffer_login, "%d#SOCIAL#%d", getpid(), user_data.dados_reservar);
-        //printf("SOCIAL QUEUE: %s\n", buffer_login);
+        
+        #ifdef DEBUG
+        printf("SOCIAL QUEUE: %s\n", buffer_login);
+        #endif
 
         pthread_mutex_lock(&mutex);
         ssize_t bytes_read = write(fd_named_pipe, buffer_login, sizeof(buffer_login));
@@ -119,7 +145,11 @@ void *social_thread(void *arg){
             max_request--;
             pthread_mutex_unlock(&mutex);
 
-            sleep(social_time/1000);
+            #ifdef SLOW
+            sleep(social_time);
+            #endif
+
+            sleep(social_time / 1000);
 
             memset(buffer_login, 0, sizeof(buffer_login));
         }
@@ -140,7 +170,11 @@ void *message_receiver(void *arg){
     fgets(msg_id, 64, fp);
     fclose(fp);
 
+    char compare[124];
+    sprintf(compare, "ALERT 100%% (USER ID = %d) TRIGGERED", getpid());
+
     while (run){
+
         queue_msg msg;
 
         if (msgrcv(atoi(msg_id), &msg, sizeof(queue_msg) - sizeof(long), getpid(), 0) == -1){
@@ -149,7 +183,10 @@ void *message_receiver(void *arg){
         }
 
         printf("%s\n", msg.message);
-        
+
+        if (strcmp(msg.message, compare) == 0){
+            handle_signal(SIGINT);
+        }   
     }
 
     pthread_exit(NULL);
