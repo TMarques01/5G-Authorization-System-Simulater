@@ -11,6 +11,22 @@ pthread_mutex_t video_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t other_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t sender_cond = PTHREAD_COND_INITIALIZER;
 
+int init_unnamed_pipes(){
+    pipes = malloc(config->auth_servers * sizeof(*pipes));
+    for (int i = 0; i < config->auth_servers; i++) {
+        if (pipe(pipes[i]) == -1) {
+            perror("Failed to create pipe");
+
+            for (int j = 0; j < i; j++) {
+                close(pipes[j][0]);
+                close(pipes[j][1]);
+            }
+            return -1;
+        }
+    }
+    return 0;
+}
+
 // ============= Queue Functions =============
 
 // Verify if queue is empty
@@ -91,7 +107,8 @@ char* dequeue(struct Queue* queue, int i) {
 
     if (queue->front == NULL) {
         queue->rear = NULL;
-    }/* else {
+    }
+    /* else {
 
         time(&queue->front->end);
         double elapsed = difftime(queue->front->end, queue->front->start);
@@ -130,14 +147,15 @@ struct Queue* createQueue() {
 // Returns queue size
 int queue_size(struct Queue* queue, int i) {
 
-    pthread_mutex_t* mutex;
+    //pthread_mutex_t* mutex;
 
     // Determinar qual mutex deve ser usado com base no valor de 'i'
-    if (i == 0) {
-        mutex = &video_mutex;
-    } else {
-        mutex = &other_mutex;
-    }
+    //if (i == 0) {
+    //    mutex = &video_mutex;
+    //} else {
+    //    mutex = &other_mutex;
+    //}
+    
 
     int count = 0;
     //pthread_mutex_lock(mutex);
@@ -147,7 +165,6 @@ int queue_size(struct Queue* queue, int i) {
         count++;
         current = current->next;
     }
-
 
     return count;
 }
@@ -210,7 +227,7 @@ void destroyQueue(struct Queue* queue) {
 // Thread that send statistic to back office
 void *back_stats(void *args){
 
-    while (running){
+    while (verify_running()){
 
         sleep(15);
 
@@ -238,7 +255,7 @@ void *back_stats(void *args){
 // Sende warning 
 void *monitor_warnings(void *args){
 
-    while (running){
+    while (verify_running()){
         
         sem_wait(monitor_sem);
 
@@ -356,7 +373,7 @@ void *receiver(void *arg){
     int max_fd = (fd_user_pipe > fd_back_pipe) ? fd_user_pipe : fd_back_pipe;
     max_fd += 1;
     
-    while (running) {
+    while (verify_running()) {
 
         // Open the FD
         FD_ZERO(&read_set);
@@ -404,6 +421,7 @@ void *receiver(void *arg){
 
                             enqueue(queue_video, user_buffer, 0);
                             pthread_cond_signal(&sender_cond);
+                            //sem_post(cond);
 
                             #ifdef DEBUG
                             printf("VIDEO USER BUFFER %s\n", user_buffer); 
@@ -413,6 +431,7 @@ void *receiver(void *arg){
 
                             enqueue(queue_other, user_buffer, 1);
                             pthread_cond_signal(&sender_cond);
+                            //sem_post(cond);
 
                             #ifdef DEBUG
                             printf("OTHER USER BUFFER %s\n", user_buffer); 
@@ -424,6 +443,7 @@ void *receiver(void *arg){
 
                         enqueue(queue_other, user_buffer, 1);
                         pthread_cond_signal(&sender_cond);
+                        //sem_post(cond);
 
                         #ifdef DEBUG
                         printf("FIRST USER BUFFER %s\n", user_buffer); 
@@ -431,6 +451,7 @@ void *receiver(void *arg){
 
                     }
                 }
+
                 #ifdef DEBUG
                 printf("VIDEO QUEUE SIZE %d\n", queue_size(queue_video, 0));
                 printf("OTHER QUEUE SIZE %d\n", queue_size(queue_other, 1));
@@ -453,6 +474,7 @@ void *receiver(void *arg){
 
                     enqueue(queue_other, back_buffer, 1);
                     pthread_cond_signal(&sender_cond);
+                    //sem_post(cond);
                 }
 
                 FD_CLR(fd_back_pipe, &read_set);
@@ -476,9 +498,9 @@ void *sender(void *arg){
     struct Queue* queue_video = args->queue_video;
     struct Queue* queue_other = args->queue_other;
 
-    for (int i = 0; i < config->auth_servers; i++) close(pipes[i][0]);
+    //for (int i = 0; i < config->auth_servers; i++) close(pipes[i][0]);
 
-    while (running){
+    while (verify_running()) {
         
         // Waiting for the signal to advance
         pthread_mutex_lock(&video_mutex);
@@ -503,7 +525,7 @@ void *sender(void *arg){
 
             extra_authorization_engine = fork();
             if (extra_authorization_engine == 0){ // creating extra authorization engine
-                authorization_engine(config->auth_servers, &pipes[config->auth_servers]);
+                authorization_engine(config->auth_servers);
                 exit(0);
             } else if (extra_authorization_engine == -1){
                 write_log("ERROR CREATING EXTRA AUTHORIZATION ENGINE");
@@ -518,19 +540,21 @@ void *sender(void *arg){
 
         // verify if the queue is 50% size and remove the extra AE
         if (n_auth_servers == config->auth_servers + 1){ 
-            if (queue_size(queue_video, 0) >= (config->queue_pos/2) && flag == 2){
+            if (queue_size(queue_video, 0) <= (config->queue_pos/2) && flag == 2){
 
                 kill(extra_authorization_engine, SIGINT);
                 close(pipes[config->auth_servers][1]);
                 flag = 0;
                 n_auth_servers--;
+                write_log("KILLING EXTRA AUTHORIZATION ENGINE");
 
-            } else if (queue_size(queue_other, 1 ) >= (config->queue_pos/2) && flag == 3){
+            } else if (queue_size(queue_other, 1 ) <= (config->queue_pos/2) && flag == 3){
 
-                close(pipes[config->auth_servers][1]);
                 kill(extra_authorization_engine, SIGINT);
+                close(pipes[config->auth_servers][1]);                
                 flag = 0;
                 n_auth_servers--;
+                write_log("KILLING EXTRA AUTHORIZATION ENGINE");
             }
         }
 
@@ -563,7 +587,6 @@ void *sender(void *arg){
                             
                             sem_wait(user_sem);
                             ssize_t bytes_written = write(pipes[i][1], msg_video, strlen(msg_video) + 1);
-
 
                             if (bytes_written < 0){
                                 write_log("ERROR WRITING TO THE UNNAMED PIPE");
@@ -658,7 +681,7 @@ void *sender(void *arg){
 } 
 
 // Authorization engines
-void authorization_engine(int id, int (*pipes)[2]){
+void authorization_engine(int id){
 
     char log[64];
     sprintf(log, "AUTHORIZATION ENGINE %d INIT", id + 1);
@@ -666,15 +689,18 @@ void authorization_engine(int id, int (*pipes)[2]){
 
     close(pipes[id][1]);
 
-    while(running){
-
-        time_t start, end;
+    while(verify_running()){
 
         char msg[1024];
+
+        //int flags = fcntl(pipes[id][0], F_GETFL, 0);
+        //fcntl(pipes[id][0], F_SETFL, flags & ~O_NONBLOCK);
+
         ssize_t bytes_read = read(pipes[id][0], msg, sizeof(msg));
 
         if (bytes_read > 0){
 
+            time_t start, end;
             time(&start);
             
             #ifdef ARRAY    
@@ -695,6 +721,7 @@ void authorization_engine(int id, int (*pipes)[2]){
                 #ifdef DEBUG
                 printf("MENSAGEM BACKOFFICE %s\n", msg);                
                 #endif
+
 
                 if (strcmp(msg, "1#data_stats") == 0){
 
@@ -815,6 +842,8 @@ void authorization_engine(int id, int (*pipes)[2]){
             shm->authorization_free[id] = 0;
             sem_post(autho_free);
 
+        } else {
+            perror("ERROR READING FROM THE PIPE");
         }
         memset(msg, 0, sizeof(msg));
     }
@@ -832,16 +861,17 @@ void authorization_request_manager(){
     create_named_pipe(USER_PIPE);
     create_named_pipe(BACK_PIPE);
 
-    // Create unnamed pipes
-    int pipes[config->auth_servers][2];
-    create_unnamed_pipes(pipes);
+
+    //int pipes[config->auth_servers][2];
+    //create_unnamed_pipes(pipes);
+    init_unnamed_pipes();
 
     // Create authorization engine processes
     for (int i = 0; i < config->auth_servers; i++){
         if (main_pid == getpid()){
             pid_t ae = fork();
             if (ae == 0){
-                authorization_engine(i, &pipes[i]);
+                authorization_engine(i);
                 exit(0);
             } else if (ae == -1) {
                 write_log("ERROR CREATING AUTHORIZATION ENGINE");
@@ -865,7 +895,7 @@ void authorization_request_manager(){
         printf("CANNOT CREATE SENDER_THREAD\n");
         exit(1);
     }
-
+  
     // Closing threads
     if (pthread_join(receiver_thread, NULL) != 0){
         printf("CANNOT JOIN RECEIVER THREAD");
@@ -883,77 +913,92 @@ void authorization_request_manager(){
 // Authorization Engine signal handler
 void author_signal(int sig){
 
-    pthread_cancel(receiver_thread);
-    pthread_cancel(sender_thread);
+    //if (getpid() == authorization_request_manager_process){
 
-    // Waiting for AE processes
-    for (int i = 0; i < config->auth_servers; i++) wait(NULL);
+        pthread_cancel(receiver_thread);
+        pthread_cancel(sender_thread);
 
-    write_Queue(queue_other);
-    write_Queue(queue_video);
+        // Waiting for AE processes
+        //for (int i = 0; i < config->auth_servers; i++) wait(NULL);
+        while (wait(NULL) > 0);
 
-    destroyQueue(queue_other);
-    destroyQueue(queue_video);
+        write_Queue(queue_other);
+        write_Queue(queue_video);
 
-    exit(0);
+        destroyQueue(queue_other);
+        destroyQueue(queue_video);
+
+        exit(0);
+    //}
 }
 
 // Monitor signal handler
 void monitor_signal(int sig){
 
-    pthread_cancel(back_office_stats);
-    pthread_cancel(monitor_warning);
-
-    exit(0);
+    //if (getpid() == monitor_engine_process){
+        pthread_cancel(back_office_stats);
+        pthread_cancel(monitor_warning);
+        exit(0);
+    //}
 }
-
 
 // Closing function
 void cleanup(int sig){
 
-    write_log("SIGNAL SIGINT RECEIVED");
+    if (getpid() == system_manager_process){
+        write_log("SIGNAL SIGINT RECEIVED");
 
-    int status, status1;
-    running = 0;
+        int status, status1;
 
-    write_log("5G_AUTH_PLATFORM SIMULATOR WAITING FOR LAST TASKS TO FINISH");
+        sem_wait(running_sem);
+        shm->running = 0;
+        sem_post(running_sem);
 
-    // Wait for Authorization and Monitor engine
-	if (waitpid(authorization_request_manager_process, &status, 0) == -1 ) write_log("ERROR IN WAITPID\n");
-    if (waitpid(monitor_engine_process, &status1, 0) == -1) write_log("ERROR IN WAITPID\n");
+        write_log("5G_AUTH_PLATFORM SIMULATOR WAITING FOR LAST TASKS TO FINISH");
 
-    write_log("5G_AUTH_PLATFORM SIMULATOR CLOSING");
+        // Wait for Authorization and Monitor engine
+        if (waitpid(authorization_request_manager_process, &status, 0) == -1 ) write_log("ERROR IN WAITPID\n");
+        if (waitpid(monitor_engine_process, &status1, 0) == -1) write_log("ERROR IN WAITPID\n");
 
-    // Close Message Queue
-    if (msgctl(mq_id, IPC_RMID, NULL) == -1) write_log("ERROR CLOSING P MESSAGE QUEUE\n");
+        write_log("5G_AUTH_PLATFORM SIMULATOR CLOSING");
 
-    pthread_mutex_destroy(&video_mutex);
-    pthread_mutex_destroy(&other_mutex);
-    pthread_cond_destroy(&sender_cond);
+        // Close Message Queue
+        if (msgctl(mq_id, IPC_RMID, NULL) == -1) write_log("ERROR CLOSING P MESSAGE QUEUE\n");
 
-    // Close log file, destroy semaphoro and pipes
-    if (sem_close(log_semaphore) == -1) write_log("ERROR CLOSING LOG SEMAPHORE\n");
-    if (sem_unlink(LOG_SEM_NAME) == -1 ) write_log ("ERROR UNLINKING LOG SEMAPHORE\n");
-    if (sem_close(user_sem) == -1) write_log("ERROR CLOSING USER SEMAPHORE\n");
-    if (sem_unlink(USER_SEM) == -1 ) write_log ("ERROR UNLINKING USER SEMAPHORE\n");
-    if (sem_close(autho_free) == -1) write_log("ERROR CLOSING AUTHORIZATION ENGINE SEMAPHORE\n");
-    if (sem_unlink(AUTH_SEM) == -1 ) write_log ("ERROR UNLINKING AUTHORIZATION ENGINE SEMAPHORE\n");
-    if (sem_close(stats_sem) == -1) write_log("ERROR CLOSING STATS SEMAPHORE\n");
-    if (sem_unlink(STATS_SEM) == -1 ) write_log ("ERROR UNLINKING STATS SEMAPHORE\n");
-    if (sem_close(monitor_sem) == -1) write_log("ERROR CLOSING MONITOR SEMAPHORE\n");
-    if (sem_unlink(MON_SEM) == -1 ) write_log ("ERROR UNLINKING MONITOR SEMAPHORE\n");
-    if (fclose(log_file) == EOF) write_log("ERROR CLOSIGN LOG FILE\n");
-    if (unlink(USER_PIPE) == -1)write_log("ERROR UNLINKING PIPE USER_PIPE\n");
-    if (unlink(BACK_PIPE) == -1)write_log("ERROR UNLINKING PIPE BACK_PIPE\n");
+        pthread_mutex_destroy(&video_mutex);
+        pthread_mutex_destroy(&other_mutex);
+        pthread_cond_destroy(&sender_cond);
 
-    //Delete shared memory
-	if(shmdt(shm)== -1) write_log("ERROR IN shmdt");
-	if(shmctl(shm_id, IPC_RMID, NULL) == -1) write_log("ERROR IN shmctl");
+        // Close log file, destroy sem and pipes
+        if (sem_close(log_semaphore) == -1) write_log("ERROR CLOSING LOG SEMAPHORE\n");
+        if (sem_unlink(LOG_SEM_NAME) == -1 ) write_log ("ERROR UNLINKING LOG SEMAPHORE\n");
+        if (sem_close(user_sem) == -1) write_log("ERROR CLOSING USER SEMAPHORE\n");
+        if (sem_unlink(USER_SEM) == -1 ) write_log ("ERROR UNLINKING USER SEMAPHORE\n");
+        if (sem_close(autho_free) == -1) write_log("ERROR CLOSING AUTHORIZATION ENGINE SEMAPHORE\n");
+        if (sem_unlink(AUTH_SEM) == -1 ) write_log ("ERROR UNLINKING AUTHORIZATION ENGINE SEMAPHORE\n");
+        if (sem_close(stats_sem) == -1) write_log("ERROR CLOSING STATS SEMAPHORE\n");
+        if (sem_unlink(STATS_SEM) == -1 ) write_log ("ERROR UNLINKING STATS SEMAPHORE\n");
+        if (sem_close(monitor_sem) == -1) write_log("ERROR CLOSING MONITOR SEMAPHORE\n");
+        if (sem_unlink(MON_SEM) == -1 ) write_log ("ERROR UNLINKING MONITOR SEMAPHORE\n");
+        if (sem_close(running_sem) == -1) write_log("ERROR CLOSING RUNNING SEMAPHORE\n");
+        if (sem_unlink(RUN_SEM) == -1 ) write_log ("ERROR UNLINKING RUNNING SEMAPHORE\n");
+        
+        if (sem_close(cond) == -1) write_log("ERROR CLOSING RUNNING SEMAPHORE\n");
+        if (sem_unlink(COND_SEM) == -1 ) write_log ("ERROR UNLINKING RUNNING SEMAPHORE\n");
 
-    //Free config malloc
-    free(config);
+        if (fclose(log_file) == EOF) write_log("ERROR CLOSIGN LOG FILE\n");
+        if (unlink(USER_PIPE) == -1) write_log("ERROR UNLINKING PIPE USER_PIPE\n");
+        if (unlink(BACK_PIPE) == -1 )write_log("ERROR UNLINKING PIPE BACK_PIPE\n");
 
-    exit(0);
+        //Delete shared memory
+        if(shmdt(shm)== -1) write_log("ERROR IN shmdt");
+        if(shmctl(shm_id, IPC_RMID, NULL) == -1) write_log("ERROR IN shmctl");
+
+        //Free config malloc
+        free(config);
+
+        exit(0);
+    }
 }
 
 // Function to initialize log file and log semaphore
@@ -1017,6 +1062,8 @@ void init_program(){
 
     for (int i = 0; i < config->auth_servers + 1; i++) shm->authorization_free[i] = 0;
 
+    shm->running = 1;
+
     shm->stats.ar_music = 0;
     shm->stats.ar_social = 0;
     shm->stats.ar_video = 0;
@@ -1049,6 +1096,20 @@ void init_program(){
     sem_unlink(MON_SEM);
     monitor_sem = sem_open(MON_SEM, O_CREAT | O_EXCL, 0777, 0);
     if (monitor_sem == SEM_FAILED) {
+        perror("sem_open");
+        exit(1);
+    }    
+
+    sem_unlink(RUN_SEM);
+    running_sem = sem_open(RUN_SEM, O_CREAT | O_EXCL, 0777, 1);
+    if (running_sem == SEM_FAILED) {
+        perror("sem_open");
+        exit(1);
+    }
+
+    sem_unlink(COND_SEM);
+    cond = sem_open(COND_SEM, O_CREAT | O_EXCL, 0777, 0);
+    if (cond == SEM_FAILED) {
         perror("sem_open");
         exit(1);
     }    
@@ -1092,6 +1153,8 @@ int main(int argc, char* argv[]){
     if (file_verification(argv[1]) != 0){
         return 0;
     }
+
+    system_manager_process = getpid();
 
     // Initialize log file and log sempahore
     init_log();

@@ -7,6 +7,8 @@
 #define AUTH_SEM "authorization_engine_sem"
 #define STATS_SEM "statistic_sem"
 #define MON_SEM "monitor_sem"
+#define RUN_SEM "running_sem"
+#define COND_SEM "condition_var"
 
 struct ThreadArgs {
   int (*pipes)[2];
@@ -14,6 +16,11 @@ struct ThreadArgs {
   struct Queue* queue_other;
 };
 
+int (*pipes)[2];
+
+int init_unnamed_pipes();
+
+// Create unnamed pipes
 void author_signal(int sig);
 void monitor_signal(int sig);
 
@@ -28,7 +35,7 @@ void destroyQueue(struct Queue* queue);
 void enqueue(struct Queue* queue, char *command, int i);
 
 // Process and Threads
-void authorization_engine(int id, int (*pipes)[2]);
+void authorization_engine(int id);
 void monitor_engine();
 void *receiver(void *arg);
 void *sender(void *arg);

@@ -22,7 +22,7 @@
 #define LOG_SEM_NAME "log_semaphore"
 
 //#define DEBUG
-//#define LIST
+#define LIST
 //#define ARRAY
 
 // Pipe Names
@@ -68,6 +68,7 @@ typedef struct{
     user *mem;
     int *authorization_free;
     statistic stats;
+    int running;
 } shared_m;
 
 // Video Queue and Other Queue
@@ -96,6 +97,7 @@ pthread_t back_office_stats, monitor_warning;
 // Principal process
 pid_t authorization_request_manager_process;
 pid_t monitor_engine_process;
+pid_t system_manager_process;
 
 // Time Variables
 time_t now;
@@ -113,6 +115,8 @@ sem_t *user_sem;
 sem_t *autho_free;
 sem_t *stats_sem;
 sem_t *monitor_sem;
+sem_t *running_sem;
+sem_t *cond;
 
 // Queue variables
 struct Queue* queue_video;

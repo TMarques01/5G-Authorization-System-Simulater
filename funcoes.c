@@ -339,3 +339,14 @@ int verify_user_list_full(){
     sem_post(user_sem);
     return 1;
 }
+
+int verify_running(){
+    sem_wait(running_sem);
+    if (shm->running == 1){
+        sem_post(running_sem);
+        return 1;
+    } else {
+        sem_post(running_sem);
+        return 0;
+    }
+}

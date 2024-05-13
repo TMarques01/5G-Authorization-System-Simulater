@@ -21,6 +21,7 @@ int is_number(char* str);
 int verify_queue_time(double elapsed, char *command);
 int check_authorization_free(int i);
 int verify_user_list_full();
+int verify_running();
 
 
 //============= Linked List Functions =============

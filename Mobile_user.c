@@ -17,7 +17,6 @@ void handle_signal(int sigint){
     pthread_cancel(music);
     pthread_cancel(message_queue);
     pthread_mutex_destroy(&mutex);
-    //close(fd_named_pipe);
 
     exit(0);
 }
@@ -56,7 +55,7 @@ void *video_thread(void *arg){
     while (verify_max_request()){
 
         sprintf(buffer_login, "%d#VIDEO#%d", getpid(), user_data.dados_reservar);
-        printf("VIDEO QUEUE: %s\n", buffer_login);
+        //printf("VIDEO QUEUE: %s\n", buffer_login);
 
         pthread_mutex_lock(&mutex);
         ssize_t bytes_read = write(fd_named_pipe, buffer_login, sizeof(buffer_login));
@@ -68,7 +67,7 @@ void *video_thread(void *arg){
             max_request--;
             pthread_mutex_unlock(&mutex);
 
-            sleep(video_time);
+            sleep(video_time/1000);
 
             memset(buffer_login, 0, sizeof(buffer_login));
         }
@@ -82,7 +81,7 @@ void *music_thread(void *arg){
     while (verify_max_request()){
 
         sprintf(buffer_login, "%d#MUSIC#%d", getpid(), user_data.dados_reservar);
-        printf("MUSIC QUEUE: %s\n", buffer_login);
+        //printf("MUSIC QUEUE: %s\n", buffer_login);
 
         pthread_mutex_lock(&mutex);
         ssize_t bytes_read = write(fd_named_pipe, buffer_login, sizeof(buffer_login));
@@ -94,7 +93,7 @@ void *music_thread(void *arg){
             max_request--;
             pthread_mutex_unlock(&mutex);
 
-            sleep(music_time);
+            sleep(music_time/1000);
             memset(buffer_login, 0, sizeof(buffer_login));
         }       
     }
@@ -107,7 +106,7 @@ void *social_thread(void *arg){
     while (verify_max_request()){
 
         sprintf(buffer_login, "%d#SOCIAL#%d", getpid(), user_data.dados_reservar);
-        printf("SOCIAL QUEUE: %s\n", buffer_login);
+        //printf("SOCIAL QUEUE: %s\n", buffer_login);
 
         pthread_mutex_lock(&mutex);
         ssize_t bytes_read = write(fd_named_pipe, buffer_login, sizeof(buffer_login));
@@ -120,7 +119,7 @@ void *social_thread(void *arg){
             max_request--;
             pthread_mutex_unlock(&mutex);
 
-            sleep(social_time);
+            sleep(social_time/1000);
 
             memset(buffer_login, 0, sizeof(buffer_login));
         }
