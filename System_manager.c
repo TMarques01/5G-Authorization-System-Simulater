@@ -146,19 +146,10 @@ struct Queue* createQueue() {
 
 // Returns queue size
 int queue_size(struct Queue* queue, int i) {
-
-    /*pthread_mutex_t* mutex;
-
-    if (i == 0) {
-        mutex = &video_mutex;
-    } else {
-        mutex = &other_mutex;
-    }*/
     
     int count = 0;
-    //pthread_mutex_lock(mutex);
     struct Node* current = queue->front;
-    //pthread_mutex_unlock(mutex);
+
     while (current != NULL) {
         count++;
         current = current->next;
@@ -336,7 +327,6 @@ void *receiver(void *arg){
     write_log("THREAD RECEIVER CREATED");
 
     struct ThreadArgs *args = (struct ThreadArgs*) arg;
-    //int (*pipes)[2] = args->pipes;
     struct Queue* queue_video = args->queue_video;
     struct Queue* queue_other = args->queue_other;
 
@@ -472,7 +462,6 @@ void *sender(void *arg){
     int flag = 0;
 
     struct ThreadArgs *args = (struct ThreadArgs*) arg;
-    //int (*pipes)[2] = args->pipes;
     struct Queue* queue_video = args->queue_video;
     struct Queue* queue_other = args->queue_other;
 
@@ -898,6 +887,7 @@ void monitor_signal(int sig){
 
         pthread_cancel(back_office_stats);
         pthread_cancel(monitor_warning);
+        
         exit(0);
 }
 
@@ -1112,7 +1102,6 @@ int main(int argc, char* argv[]){
 
     // Signal to end program
     signal(SIGINT, cleanup);
-    signal(SIGTSTP, cleanup);
 
     wait(NULL);
 }

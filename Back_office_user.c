@@ -1,3 +1,6 @@
+//Mariana Sousa 2022215999
+//Tiago Marques 2022210638
+
 #include "shared_memory.h"
 
 int fd_back_pipe;
@@ -31,15 +34,14 @@ void *receive_stats(void *args){
 }
 
 int check_command(const char *input) {
-    // Verifica se a entrada é igual a "1#data_stats"
+    // Verify if the data is "1#data_stats"
     if (strcmp(input, "1#data_stats") == 0) {
         return 1;
     }
-    // Verifica se a entrada é igual a "1#reset"
+    //  Verify if the data is "1#reset"
     else if (strcmp(input, "1#reset") == 0) {
         return 1;
     }
-    // Retorna 0 se a entrada não corresponder a nenhum dos comandos esperados
     return 0;
 }
 

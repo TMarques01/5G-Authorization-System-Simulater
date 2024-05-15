@@ -1,3 +1,6 @@
+//Mariana Sousa 2022215999
+//Tiago Marques 2022210638
+
 #ifndef SHARED_MEM_H 
 #define SHARED_MEM_H
 

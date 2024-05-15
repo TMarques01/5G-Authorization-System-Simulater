@@ -1,3 +1,6 @@
+//Mariana Sousa 2022215999
+//Tiago Marques 2022210638
+
 #ifndef SYSTEM_MAN_H
 #define SYSTEM_MAN_H
 

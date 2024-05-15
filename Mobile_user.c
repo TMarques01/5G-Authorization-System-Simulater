@@ -46,7 +46,7 @@ int verify_max_request(){
 }
 
 int verify_data(int argc, char **argv) {
-    for (int i = 1; i < argc; i++){ // Começa em 1 para ignorar o nome do programa
+    for (int i = 1; i < argc; i++){ // ignore the name of the file
         for (int j = 0; argv[i][j] != '\0'; j++) {
             if (!isdigit(argv[i][j])) {
                 printf("Dados incorretos!\n");
